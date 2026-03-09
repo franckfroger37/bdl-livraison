@@ -288,6 +288,7 @@ function VueLogin({ onLogin, onConfig }) {
           <img src={LOGO_BDL} alt="Bulle de Linge" style={{ height:'90px', margin:'0 auto 12px', display:'block' }} />
           <h1 style={{ fontSize:'28px', fontWeight:'bold', color:'#1f2937', margin:0 }}>BDL-LIVRAISON</h1>
           <p style={{ color:'#6b7280', marginTop:'4px', fontSize:'14px' }}>{cfg.nomUnite || 'Gestion de tournees'}</p>
+          <p style={{ color:'#2563eb', marginTop:'2px', fontSize:'12px', fontWeight:'600', letterSpacing:'0.05em' }}>v{APP_VERSION}</p>
         </div>
 
         {/* Bannière reprise de session */}
