@@ -2,7 +2,7 @@
   "name": "bdl-livraison-v2",
   "version": "2.0.0",
   "private": true,
-  "homepage": ".",
+  "homepage": "https://franckfroger37.github.io/bdl-livraison",
   "dependencies": {
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
