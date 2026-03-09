@@ -7,10 +7,75 @@ import autoTable from 'jspdf-autotable';
 // ─── Configuration ───────────────────────────────────────────────────────────
 const APP_VERSION = '2.0.0';
 
-// ─── Helper : parser les IDs cabris depuis une cellule Excel ─────────────────
-function parseCabrisIds(val) {
-  if (!val) return [];
-  return String(val).split(/[\s,;]+/).map(s => s.trim()).filter(s => s.length > 0);
+// ─── Helper : parser les lignes Excel (format ID_Cabri — une ligne = un cabri) ─
+// Règles :
+//   • Colonne Client vide → même client que la ligne précédente (carry-forward)
+//   • Colonne Service vide → même service que la ligne précédente (carry-forward)
+//   • Chaque ID_Cabri est ajouté au service courant
+//   • cabrisPrevu = nombre d'IDs du service (calculé automatiquement)
+function parserRowsExcel(rows) {
+  const clients = [];
+  let current = null;
+  let dernierServiceNom = '';
+
+  rows.forEach(row => {
+    const clientVal  = row.Client   ? String(row.Client).trim()   : '';
+    const serviceVal = row.Service  ? String(row.Service).trim()  : '';
+    const idCabriVal = (row.ID_Cabri !== undefined && row.ID_Cabri !== '')
+      ? String(row.ID_Cabri).trim() : '';
+
+    // Ignorer les lignes entièrement vides
+    if (!clientVal && !serviceVal && !idCabriVal) return;
+
+    // Nouveau client
+    if (clientVal) {
+      if (current) clients.push(current);
+      current = {
+        id: `C${clients.length + 1}`,
+        nom: clientVal,
+        adresse:    row.Adresse   ? String(row.Adresse).trim()   : '',
+        gps:        row.GPS       ? String(row.GPS).trim()       : '',
+        telephone:  row.Telephone ? String(row.Telephone).trim() : '',
+        noteTournee: row['Note de tournée']
+          ? String(row['Note de tournée']).trim()
+          : (row['Note de tounée'] ? String(row['Note de tounée']).trim() : ''),
+        services: []
+      };
+      dernierServiceNom = '';
+    }
+
+    if (!current) return;
+
+    // Note de tournée peut apparaître sur n'importe quelle ligne du client
+    const note = row['Note de tournée'] || row['Note de tounée'] || '';
+    if (note && !current.noteTournee) current.noteTournee = String(note).trim();
+
+    // Nom du service : nouveau si non vide, sinon carry-forward
+    const nomService = serviceVal || dernierServiceNom;
+    if (!nomService) return;
+
+    // Créer un nouveau service si le nom change
+    if (nomService !== dernierServiceNom) {
+      current.services.push({
+        id: `S${current.services.length + 1}`,
+        nom: nomService,
+        cabrisIds: [],
+        cabrisPrevu: 0,
+        cabrisRecuperes: 0
+      });
+      dernierServiceNom = nomService;
+    }
+
+    // Ajouter l'ID cabri au service courant (si présent)
+    if (idCabriVal) {
+      const svc = current.services[current.services.length - 1];
+      svc.cabrisIds.push(idCabriVal);
+      svc.cabrisPrevu = svc.cabrisIds.length; // toujours égal au nombre d'IDs
+    }
+  });
+
+  if (current) clients.push(current);
+  return clients;
 }
 const LOGO_BDL = 'data:image/jpeg;base64,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';
 
@@ -377,32 +442,8 @@ function VueImport({ onImport, onConfig }) {
       const data = new Uint8Array(arrayBuffer);
       const wb = XLSX.read(data, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws);
-      const clients = [];
-      let current = null;
-      rows.forEach(row => {
-        if (row.Client && String(row.Client).trim()) {
-          if (current) clients.push(current);
-          current = {
-            id: `C${clients.length + 1}`,
-            nom: String(row.Client).trim(),
-            adresse: row.Adresse || '',
-            telephone: row.Telephone || '',
-            noteTournee: row['Note de tournée'] || row['Note de tounée'] || row['Note de tournee'] || row.Commentaire || '',
-            services: []
-          };
-        }
-        if (row.Service && current) {
-          current.services.push({
-            id: `S${current.services.length + 1}`,
-            nom: String(row.Service).trim(),
-            cabrisPrevu: parseInt(row.CabrisPrevus) || parseInt(row.CabrisPrevu) || 0,
-            cabrisIds: parseCabrisIds(row.CabrisIDs || row.CabrisIds || row['Cabris IDs'] || row['CabrisId'] || ''),
-            cabrisRecuperes: 0
-          });
-        }
-      });
-      if (current) clients.push(current);
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      const clients = parserRowsExcel(rows);
       if (clients.length === 0) { alert("Aucun client trouvé dans ce fichier."); setChargement(false); return; }
       onImport({ id: `T-${new Date().toISOString().split('T')[0]}`, date: new Date().toISOString(), clients }, fichier.name.replace('.xlsx','').replace('.xls',''));
     } catch (err) {
@@ -419,31 +460,8 @@ function VueImport({ onImport, onConfig }) {
         const data = new Uint8Array(ev.target.result);
         const wb = XLSX.read(data, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws);
-        const clients = [];
-        let current = null;
-        rows.forEach(row => {
-          if (row.Client && String(row.Client).trim()) {
-            if (current) clients.push(current);
-            current = {
-              id: `C${clients.length + 1}`,
-              nom: String(row.Client).trim(),
-              adresse: row.Adresse || '',
-              telephone: row.Telephone || '',
-              noteTournee: row['Note de tournée'] || row['Note de tounée'] || row['Note de tournee'] || row.Commentaire || '',
-              services: []
-            };
-          }
-          if (row.Service && current) {
-            current.services.push({
-              id: `S${current.services.length + 1}`,
-              nom: String(row.Service).trim(),
-              cabrisPrevu: parseInt(row.CabrisPrevus) || parseInt(row.CabrisPrevu) || 0,
-              cabrisRecuperes: 0
-            });
-          }
-        });
-        if (current) clients.push(current);
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        const clients = parserRowsExcel(rows);
         if (clients.length === 0) { alert("Aucun client trouvé. Vérifiez le format du fichier Excel."); return; }
         onImport({ id: `T-${new Date().toISOString().split('T')[0]}`, date: new Date().toISOString(), clients });
       } catch { alert("Erreur de lecture du fichier Excel. Vérifiez le format."); }
