@@ -572,7 +572,7 @@ const jouerSonDejaLu = () => _jouerNotes([{ freq:660, debut:0, duree:0.09 }]);
 // ─── Écran de récapitulatif + chargement cabris ──────────────────────────────
 // ─── Scanner QR plein écran ───────────────────────────────────────────────────
 // feedback : null | { type: 'ok'|'anomalie'|'dejaLu', ts: number }
-function VueScanner({ onScan, onFermer, titre, feedback }) {
+function VueScanner({ onScan, onFermer, titre }) {
   const videoRef  = React.useRef(null);
   const streamRef = React.useRef(null);
   const timerRef  = React.useRef(null);
@@ -624,8 +624,11 @@ function VueScanner({ onScan, onFermer, titre, feedback }) {
           if (val && (val !== derniereValRef.current || now - dernierTempsRef.current > 2000)) {
             derniereValRef.current  = val;
             dernierTempsRef.current = now;
-            setDernierScan({ val, heure: new Date().toLocaleTimeString('fr-FR'), statut: null });
-            onScan(val);
+            const result = onScan(val);
+            if (result === 'ok')       jouerSonOK();
+            else if (result === 'anomalie') jouerSonErreur();
+            else if (result === 'dejaLu')  jouerSonDejaLu();
+            setDernierScan({ val, heure: new Date().toLocaleTimeString('fr-FR'), statut: result || null });
           }
         }
       } catch {}
@@ -633,20 +636,14 @@ function VueScanner({ onScan, onFermer, titre, feedback }) {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [actif, onScan]);
 
-  // ── Réaction au feedback parent : son + couleur ──
-  useEffect(() => {
-    if (!feedback) return;
-    if (feedback.type === 'ok')       jouerSonOK();
-    if (feedback.type === 'anomalie') jouerSonErreur();
-    if (feedback.type === 'dejaLu')   jouerSonDejaLu();
-    setDernierScan(prev => prev ? { ...prev, statut: feedback.type } : prev);
-  }, [feedback]);
-
   const validerSaisie = () => {
     const val = saisieManuelle.trim();
     if (!val) return;
-    setDernierScan({ val, heure: new Date().toLocaleTimeString('fr-FR'), statut: null });
-    onScan(val);
+    const result = onScan(val);
+    if (result === 'ok')       jouerSonOK();
+    else if (result === 'anomalie') jouerSonErreur();
+    else if (result === 'dejaLu')  jouerSonDejaLu();
+    setDernierScan({ val, heure: new Date().toLocaleTimeString('fr-FR'), statut: result || null });
     setSaisieManuelle('');
   };
 
@@ -823,7 +820,6 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
   const [cabrisScannés, setCabrisScannés]             = useState([]);     // IDs validés
   const [anomaliesChargement, setAnomaliesChargement] = useState([]);     // anomalies signalées
   const [scannerOuvert, setScannerOuvert]             = useState(false);
-  const [feedbackScanner, setFeedbackScanner]         = useState(null);   // feedback son/couleur
   const [anomalieEnCours, setAnomalieEnCours]         = useState(null);   // { id }
 
   const clientsOrdres = ordre.map(i => tournee.clients[i]);
@@ -848,19 +844,22 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
   const toutTraite     = totalAttendu === 0 || totalTraite >= totalAttendu;
 
   const handleScanChargement = React.useCallback((id) => {
-    // Anti-doublon → son "déjà lu"
     if (cabrisScannés.includes(id) || anomaliesChargement.some(a => a.id === id)) {
-      setFeedbackScanner({ type: 'dejaLu', ts: Date.now() });
-      return;
+      return 'dejaLu';
     }
     const cabriInfo = tousLesCabris.find(c => c.id === id);
     if (cabriInfo) {
-      setCabrisScannés(prev => [...prev, id]);
-      setFeedbackScanner({ type: 'ok', ts: Date.now() });
+      const newScannés = [...cabrisScannés, id];
+      setCabrisScannés(newScannés);
+      // Auto-fermeture quand tous les cabris sont scannés
+      if (newScannés.length + anomaliesChargement.length >= tousLesCabris.length) {
+        setScannerOuvert(false);
+      }
+      return 'ok';
     } else {
-      setFeedbackScanner({ type: 'anomalie', ts: Date.now() });
       setScannerOuvert(false);
       setAnomalieEnCours({ id });
+      return 'anomalie';
     }
   }, [cabrisScannés, anomaliesChargement, tousLesCabris]);
 
@@ -913,7 +912,6 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
           titre="Scanner cabri — Chargement"
           onScan={handleScanChargement}
           onFermer={() => setScannerOuvert(false)}
-          feedback={feedbackScanner}
         />
       )}
 
@@ -927,60 +925,60 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
         />
       )}
 
-    <div style={{ minHeight:'100vh', background:'#f3f4f6', padding:'24px' }}>
-      <div style={{ maxWidth:'700px', margin:'0 auto', background:'white', borderRadius:'20px', padding:'32px', boxShadow:'0 4px 20px rgba(0,0,0,0.1)' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'24px' }}>
-          <h2 style={{ fontSize:'24px', fontWeight:'bold', margin:0 }}>
-            <CheckCircle size={28} style={{ color:'#16a34a', verticalAlign:'middle', marginRight:'10px' }} />
-            Clients a livrer
+    <div style={{ minHeight:'100vh', background:'#f3f4f6', padding:'8px' }}>
+      <div style={{ maxWidth:'700px', margin:'0 auto', background:'white', borderRadius:'16px', padding:'16px', boxShadow:'0 4px 20px rgba(0,0,0,0.1)' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
+          <h2 style={{ fontSize:'20px', fontWeight:'bold', margin:0 }}>
+            <CheckCircle size={22} style={{ color:'#16a34a', verticalAlign:'middle', marginRight:'8px' }} />
+            Clients à livrer
           </h2>
           <button onClick={onRetour}
-            style={{ padding:'10px 16px', background:'#f3f4f6', color:'#374151', border:'2px solid #e5e7eb', borderRadius:'10px', fontSize:'14px', fontWeight:'600', cursor:'pointer' }}>
+            style={{ padding:'8px 12px', background:'#f3f4f6', color:'#374151', border:'2px solid #e5e7eb', borderRadius:'8px', fontSize:'13px', fontWeight:'600', cursor:'pointer' }}>
             ← Changer
           </button>
         </div>
 
         {/* Compteurs */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'12px', marginBottom:'24px' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'8px', marginBottom:'12px' }}>
           {[
             { label:'Clients',      value: tournee.clients.length,                             color:'#2563eb', bg:'#eff6ff' },
             { label:'Total Cabris', value: totalCabris,                                        color:'#16a34a', bg:'#f0fdf4' },
             { label:'Date',         value: new Date(tournee.date).toLocaleDateString('fr-FR'), color:'#7c3aed', bg:'#faf5ff', small: true },
           ].map(({ label, value, color, bg, small }) => (
-            <div key={label} style={{ background:bg, borderRadius:'12px', padding:'16px', textAlign:'center' }}>
-              <p style={{ color:'#6b7280', marginBottom:'6px', fontSize:'13px' }}>{label}</p>
-              <p style={{ fontSize: small ? '15px' : '24px', fontWeight:'bold', color, margin:0, wordBreak:'break-word', lineHeight:1.2 }}>{value}</p>
+            <div key={label} style={{ background:bg, borderRadius:'10px', padding:'10px', textAlign:'center' }}>
+              <p style={{ color:'#6b7280', marginBottom:'3px', fontSize:'12px' }}>{label}</p>
+              <p style={{ fontSize: small ? '13px' : '20px', fontWeight:'bold', color, margin:0, wordBreak:'break-word', lineHeight:1.2 }}>{value}</p>
             </div>
           ))}
         </div>
 
         {/* Ordre de livraison */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
-          <p style={{ fontWeight:'bold', fontSize:'17px', margin:0 }}>🗂️ Ordre de livraison</p>
-          <p style={{ fontSize:'12px', color:'#6b7280', margin:0 }}>↑↓ pour réorganiser</p>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
+          <p style={{ fontWeight:'bold', fontSize:'15px', margin:0 }}>🗂️ Ordre de livraison</p>
+          <p style={{ fontSize:'11px', color:'#6b7280', margin:0 }}>↑↓ pour réorganiser</p>
         </div>
-        <div style={{ marginBottom:'24px' }}>
+        <div style={{ marginBottom:'12px' }}>
           {clientsOrdres.map((c, pos) => (
             <div key={c.id} style={{
               background: pos === 0 ? '#f0fdf4' : '#f9fafb',
-              border: pos === 0 ? '2px solid #86efac' : '2px solid #e5e7eb',
-              borderRadius:'12px', padding:'10px 12px', marginBottom:'8px',
-              display:'flex', alignItems:'center', gap:'10px'
+              border: pos === 0 ? '2px solid #86efac' : '1px solid #e5e7eb',
+              borderRadius:'10px', padding:'7px 10px', marginBottom:'4px',
+              display:'flex', alignItems:'center', gap:'8px'
             }}>
               <div style={{
-                minWidth:'30px', height:'30px', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
+                minWidth:'26px', height:'26px', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
                 background: pos === 0 ? '#16a34a' : '#e5e7eb',
-                color: pos === 0 ? 'white' : '#374151', fontWeight:'bold', fontSize:'14px', flexShrink:0
+                color: pos === 0 ? 'white' : '#374151', fontWeight:'bold', fontSize:'13px', flexShrink:0
               }}>{pos + 1}</div>
               <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ fontWeight:'bold', fontSize:'15px', margin:'0 0 2px', wordBreak:'break-word', lineHeight:'1.3' }}>
+                <p style={{ fontWeight:'bold', fontSize:'14px', margin:0, wordBreak:'break-word', lineHeight:'1.3' }}>
                   {c.nom}
                 </p>
-                <p style={{ color:'#6b7280', fontSize:'12px', margin:0 }}>
+                <p style={{ color:'#6b7280', fontSize:'11px', margin:0 }}>
                   {c.services.reduce((s, sv) => s + sv.cabrisPrevu, 0)} cabris
                 </p>
               </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:'4px', flexShrink:0 }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:'3px', flexShrink:0 }}>
                 <BtnOrdre onClick={() => monter(pos)}    label="↑" disabled={pos === 0} />
                 <BtnOrdre onClick={() => descendre(pos)} label="↓" disabled={pos === ordre.length - 1} />
               </div>
@@ -991,25 +989,25 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
         {/* ── Phase chargement ─────────────────────────────────────────────── */}
         {!chargementDemarre ? (
           <button onClick={demarrerChargement}
-            style={{ width:'100%', padding:'24px', background:'#f59e0b', color:'white', border:'none', borderRadius:'14px', fontSize:'22px', fontWeight:'bold', cursor:'pointer' }}>
+            style={{ width:'100%', padding:'16px', background:'#f59e0b', color:'white', border:'none', borderRadius:'12px', fontSize:'18px', fontWeight:'bold', cursor:'pointer' }}>
             📦 Démarrer le chargement
           </button>
         ) : (
           <div>
             {/* Heure chargement */}
-            <div style={{ background:'#fefce8', border:'2px solid #fde68a', borderRadius:'12px', padding:'16px', marginBottom:'16px', textAlign:'center' }}>
-              <p style={{ fontWeight:'bold', color:'#92400e', fontSize:'16px', margin:'0 0 4px' }}>⏱️ Chargement en cours...</p>
-              <p style={{ color:'#b45309', fontSize:'14px', margin:0 }}>
+            <div style={{ background:'#fefce8', border:'2px solid #fde68a', borderRadius:'10px', padding:'8px 12px', marginBottom:'10px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <p style={{ fontWeight:'bold', color:'#92400e', fontSize:'14px', margin:0 }}>⏱️ Chargement en cours...</p>
+              <p style={{ color:'#b45309', fontSize:'13px', margin:0 }}>
                 Début : {heureChargement.toLocaleTimeString('fr-FR')}
               </p>
             </div>
 
             {/* ── SECTION SCAN QR (uniquement si mode QR activé) ──────────── */}
             {modeQR && (
-              <div style={{ background:'#f0f9ff', border:'2px solid #bae6fd', borderRadius:'14px', padding:'20px', marginBottom:'16px' }}>
+              <div style={{ background:'#f0f9ff', border:'2px solid #bae6fd', borderRadius:'12px', padding:'12px', marginBottom:'10px' }}>
                 {/* En-tête scan */}
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'14px' }}>
-                  <p style={{ fontWeight:'bold', fontSize:'17px', color:'#0369a1', margin:0 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>
+                  <p style={{ fontWeight:'bold', fontSize:'15px', color:'#0369a1', margin:0 }}>
                     📦 Scan des cabris
                   </p>
                   <span style={{
@@ -1076,18 +1074,18 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
                 )}
 
                 {/* Bouton scanner */}
-                <button onClick={() => setScannerOuvert(true)}
-                  style={{ width:'100%', padding:'18px', background:'#0284c7', color:'white', border:'none', borderRadius:'12px', fontSize:'17px', fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px' }}>
-                  📱 Scanner un cabri
+                <button onClick={() => setScannerOuvert(true)} disabled={toutTraite}
+                  style={{ width:'100%', padding:'16px', background: toutTraite ? '#6b7280' : '#0284c7', color:'white', border:'none', borderRadius:'12px', fontSize:'16px', fontWeight:'bold', cursor: toutTraite ? 'default' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', opacity: toutTraite ? 0.7 : 1 }}>
+                  {toutTraite ? '✅ Tous les cabris scannés' : '📱 Scanner un cabri'}
                 </button>
               </div>
             )}
 
             {/* Bouton DÉPART */}
             <button onClick={confirmerDepart}
-              style={{ width:'100%', padding:'24px', background: modeQR && !toutTraite ? '#f59e0b' : '#16a34a', color:'white', border:'none', borderRadius:'14px', fontSize:'22px', fontWeight:'bold', cursor:'pointer' }}>
-              <Clock size={26} style={{ verticalAlign:'middle', marginRight:'10px' }} />
-              {modeQR && !toutTraite ? `🚚 DÉPART (${totalAttendu - totalTraite} cabri(s) manquants)` : '🚚 DÉPART DE L\'UNITÉ'}
+              style={{ width:'100%', padding:'16px', background: modeQR && !toutTraite ? '#f59e0b' : '#16a34a', color:'white', border:'none', borderRadius:'12px', fontSize:'18px', fontWeight:'bold', cursor:'pointer' }}>
+              <Clock size={22} style={{ verticalAlign:'middle', marginRight:'8px' }} />
+              {modeQR && !toutTraite ? `🚚 DÉPART (${totalAttendu - totalTraite} manquant(s))` : '🚚 DÉPART DE L\'UNITÉ'}
             </button>
           </div>
         )}
@@ -1148,7 +1146,6 @@ function VueClient({ client, onDepart, tournee }) {
   const [anomaliesLiv, setAnomaliesLiv]             = useState([]);   // anomalies livraison
   const [scannerLivOuvert, setScannerLivOuvert]     = useState(false);
   const [anomalieLivEnCours, setAnomalieLivEnCours] = useState(null); // { id, message }
-  const [feedbackScannerLiv, setFeedbackScannerLiv] = useState(null); // feedback son/couleur
 
   const modeQRLiv = client.services.some(s => s.cabrisIds?.length > 0);
 
@@ -1157,31 +1154,24 @@ function VueClient({ client, onDepart, tournee }) {
   const toutTraiteLiv       = totalCabrisAttendus === 0 || totalCabrisTraites >= totalCabrisAttendus;
 
   const handleScanLivraison = React.useCallback((id) => {
-    // Anti-doublon → son "déjà lu"
     const dejaScanné = Object.values(cabrisScannésLiv).flat().includes(id) || anomaliesLiv.some(a => a.id === id);
-    if (dejaScanné) {
-      setFeedbackScannerLiv({ type: 'dejaLu', ts: Date.now() });
-      return;
-    }
+    if (dejaScanné) return 'dejaLu';
 
-    // Chercher à quel service de ce client appartient cet ID
     let serviceMatched = null;
     client.services.forEach(s => {
       if ((s.cabrisIds || []).includes(id)) serviceMatched = s;
     });
 
     if (serviceMatched) {
-      // Bon cabri pour ce client
-      setCabrisScannésLiv(prev => ({
-        ...prev,
-        [serviceMatched.id]: [...(prev[serviceMatched.id] || []), id]
-      }));
-      setFeedbackScannerLiv({ type: 'ok', ts: Date.now() });
+      const newServiceScannés = [...(cabrisScannésLiv[serviceMatched.id] || []), id];
+      const newCabrisScannésLiv = { ...cabrisScannésLiv, [serviceMatched.id]: newServiceScannés };
+      setCabrisScannésLiv(newCabrisScannésLiv);
+      // Auto-fermeture quand tous les cabris sont scannés
+      const newTotal = Object.values(newCabrisScannésLiv).flat().length + anomaliesLiv.length;
+      if (newTotal >= totalCabrisAttendus) setScannerLivOuvert(false);
+      return 'ok';
     } else {
-      // Cabri inconnu ou d'un autre client
-      setFeedbackScannerLiv({ type: 'anomalie', ts: Date.now() });
       setScannerLivOuvert(false);
-      // Chercher si ce cabri appartient à un autre client de la tournée
       let autreClient = null;
       if (tournee) {
         tournee.clients.forEach(c => {
@@ -1196,8 +1186,9 @@ function VueClient({ client, onDepart, tournee }) {
         ? `Ce cabri appartient au client "${autreClient.nom}", pas à "${client.nom}".`
         : `Ce cabri n'est pas prévu pour ${client.nom}.`;
       setAnomalieLivEnCours({ id, message: msg });
+      return 'anomalie';
     }
-  }, [cabrisScannésLiv, anomaliesLiv, client, tournee]);
+  }, [cabrisScannésLiv, anomaliesLiv, client, tournee, totalCabrisAttendus]);
 
   const confirmerAnomalieLiv = (id, commentaire) => {
     setAnomaliesLiv(prev => [...prev, { id, commentaire, type: 'mauvais_cabri' }]);
@@ -1220,7 +1211,7 @@ function VueClient({ client, onDepart, tournee }) {
   };
 
   const supprimerPhoto = (id) => setPhotos(prev => prev.filter(p => p.id !== id));
-  const btnStyle = (bg) => ({ width:'100%', padding:'20px', background:bg, color:'white', border:'none', borderRadius:'12px', fontSize:'17px', fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px' });
+  const btnStyle = (bg) => ({ width:'100%', padding:'12px', background:bg, color:'white', border:'none', borderRadius:'10px', fontSize:'15px', fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' });
 
   return (
     <>
@@ -1230,7 +1221,6 @@ function VueClient({ client, onDepart, tournee }) {
           titre={`Scanner cabris — ${client.nom}`}
           onScan={handleScanLivraison}
           onFermer={() => setScannerLivOuvert(false)}
-          feedback={feedbackScannerLiv}
         />
       )}
       {/* Modal anomalie livraison */}
@@ -1243,31 +1233,31 @@ function VueClient({ client, onDepart, tournee }) {
         />
       )}
 
-    <div style={{ minHeight:'100vh', background:'#f3f4f6', padding:'24px' }}>
-      <div style={{ maxWidth:'700px', margin:'0 auto', background:'white', borderRadius:'20px', padding:'36px', boxShadow:'0 4px 20px rgba(0,0,0,0.1)' }}>
-        <h2 style={{ fontSize:'24px', fontWeight:'bold', color:'#1f2937', marginBottom:'24px' }}>{client.nom}</h2>
+    <div style={{ minHeight:'100vh', background:'#f3f4f6', padding:'8px' }}>
+      <div style={{ maxWidth:'700px', margin:'0 auto', background:'white', borderRadius:'16px', padding:'14px', boxShadow:'0 4px 20px rgba(0,0,0,0.1)' }}>
+        <h2 style={{ fontSize:'20px', fontWeight:'bold', color:'#1f2937', marginBottom:'8px' }}>{client.nom}</h2>
 
         {/* Contact */}
-        <div style={{ background:'#f0fdf4', borderRadius:'12px', padding:'14px', marginBottom:'16px' }}>
-          <p style={{ fontWeight:'600', color:'#15803d', fontSize:'13px', marginBottom:'6px' }}>Contact</p>
-          <p style={{ fontSize:'18px', fontWeight:'bold', margin:0 }}>{client.telephone || 'Non renseigne'}</p>
+        <div style={{ background:'#f0fdf4', borderRadius:'10px', padding:'8px 12px', marginBottom:'8px', display:'flex', alignItems:'center', gap:'10px' }}>
+          <span style={{ fontWeight:'600', color:'#15803d', fontSize:'12px', flexShrink:0 }}>📞</span>
+          <span style={{ fontSize:'16px', fontWeight:'bold' }}>{client.telephone || 'Non renseigne'}</span>
         </div>
 
         {client.noteTournee && (
-          <div style={{ background:'#fef3c7', border:'2px solid #fde68a', borderRadius:'12px', padding:'16px', marginBottom:'16px' }}>
-            <p style={{ fontWeight:'700', color:'#92400e', marginBottom:'8px', fontSize:'15px' }}>Note de tournee</p>
-            <p style={{ color:'#374151', margin:0, fontSize:'15px', lineHeight:'1.7', whiteSpace:'pre-wrap' }}>{client.noteTournee}</p>
+          <div style={{ background:'#fef3c7', border:'2px solid #fde68a', borderRadius:'10px', padding:'8px 12px', marginBottom:'8px' }}>
+            <p style={{ fontWeight:'700', color:'#92400e', marginBottom:'2px', fontSize:'12px' }}>📝 Note de tournée</p>
+            <p style={{ color:'#374151', margin:0, fontSize:'13px', lineHeight:'1.5', whiteSpace:'pre-wrap' }}>{client.noteTournee}</p>
           </div>
         )}
-        <h3 style={{ fontSize:'20px', fontWeight:'bold', marginBottom:'16px' }}>Services a livrer</h3>
+        <h3 style={{ fontSize:'16px', fontWeight:'bold', marginBottom:'6px' }}>Services à livrer</h3>
         {/* Affichage lecture seule par service (avec IDs si mode QR) */}
         {services.map((sv) => (
-          <div key={sv.id} style={{ background:'#f9fafb', borderRadius:'10px', padding:'12px 16px', marginBottom:'6px' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: sv.cabrisIds?.length > 0 ? '8px' : '0' }}>
-              <span style={{ fontWeight:'600', fontSize:'15px', color:'#374151' }}>{sv.nom}</span>
-              <div style={{ background:'#dbeafe', border:'2px solid #93c5fd', borderRadius:'8px', padding:'6px 14px', textAlign:'center' }}>
-                <span style={{ fontSize:'22px', fontWeight:'bold', color:'#1d4ed8' }}>{sv.cabrisPrevu}</span>
-                <span style={{ fontSize:'11px', color:'#6b7280', marginLeft:'4px' }}>cabris</span>
+          <div key={sv.id} style={{ background:'#f9fafb', borderRadius:'8px', padding:'8px 10px', marginBottom:'4px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: sv.cabrisIds?.length > 0 ? '6px' : '0' }}>
+              <span style={{ fontWeight:'600', fontSize:'14px', color:'#374151' }}>{sv.nom}</span>
+              <div style={{ background:'#dbeafe', border:'1px solid #93c5fd', borderRadius:'6px', padding:'3px 10px', textAlign:'center' }}>
+                <span style={{ fontSize:'16px', fontWeight:'bold', color:'#1d4ed8' }}>{sv.cabrisPrevu}</span>
+                <span style={{ fontSize:'10px', color:'#6b7280', marginLeft:'3px' }}>cabris</span>
               </div>
             </div>
             {/* IDs cabris avec statut scan */}
@@ -1293,19 +1283,19 @@ function VueClient({ client, onDepart, tournee }) {
 
         {/* ── SECTION SCAN QR livraison ────────────────────────────────────── */}
         {modeQRLiv && (
-          <div style={{ background:'#f0f9ff', border:'2px solid #bae6fd', borderRadius:'14px', padding:'16px', marginTop:'14px', marginBottom:'14px' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'10px' }}>
-              <p style={{ fontWeight:'bold', fontSize:'16px', color:'#0369a1', margin:0 }}>📦 Scan cabris livrés</p>
+          <div style={{ background:'#f0f9ff', border:'2px solid #bae6fd', borderRadius:'12px', padding:'10px', marginTop:'8px', marginBottom:'8px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
+              <p style={{ fontWeight:'bold', fontSize:'14px', color:'#0369a1', margin:0 }}>📦 Scan cabris livrés</p>
               <span style={{
                 background: toutTraiteLiv ? '#dcfce7' : '#fef3c7',
                 color: toutTraiteLiv ? '#15803d' : '#92400e',
-                fontWeight:'bold', fontSize:'13px', padding:'3px 10px', borderRadius:'999px'
+                fontWeight:'bold', fontSize:'13px', padding:'2px 8px', borderRadius:'999px'
               }}>
                 {totalCabrisTraites}/{totalCabrisAttendus}
               </span>
             </div>
             {/* Barre progression */}
-            <div style={{ background:'#e0f2fe', borderRadius:'999px', height:'8px', marginBottom:'12px', overflow:'hidden' }}>
+            <div style={{ background:'#e0f2fe', borderRadius:'999px', height:'6px', marginBottom:'8px', overflow:'hidden' }}>
               <div style={{
                 background: toutTraiteLiv ? '#16a34a' : '#0284c7',
                 height:'100%', borderRadius:'999px',
@@ -1324,60 +1314,60 @@ function VueClient({ client, onDepart, tournee }) {
                 ))}
               </div>
             )}
-            <button onClick={() => setScannerLivOuvert(true)}
-              style={{ width:'100%', padding:'16px', background:'#0284c7', color:'white', border:'none', borderRadius:'12px', fontSize:'16px', fontWeight:'bold', cursor:'pointer' }}>
-              📱 Scanner les cabris
+            <button onClick={() => setScannerLivOuvert(true)} disabled={toutTraiteLiv}
+              style={{ width:'100%', padding:'14px', background: toutTraiteLiv ? '#6b7280' : '#0284c7', color:'white', border:'none', borderRadius:'12px', fontSize:'15px', fontWeight:'bold', cursor: toutTraiteLiv ? 'default' : 'pointer', opacity: toutTraiteLiv ? 0.7 : 1 }}>
+              {toutTraiteLiv ? '✅ Tous les cabris scannés' : '📱 Scanner les cabris'}
             </button>
           </div>
         )}
 
         {/* Un seul champ : total cabris ramasses */}
-        <div style={{ background:'#fef3c7', border: cabrisReprisTotal === '' ? '3px solid #ef4444' : '2px solid #fde68a', borderRadius:'12px', padding:'18px', marginTop:'14px', marginBottom:'16px' }}>
-          <p style={{ fontWeight:'bold', fontSize:'16px', color:'#92400e', margin:'0 0 10px' }}>
-            Cabris ramasses — total (sale)
+        <div style={{ background:'#fef3c7', border: cabrisReprisTotal === '' ? '3px solid #ef4444' : '2px solid #fde68a', borderRadius:'10px', padding:'10px 12px', marginTop:'8px', marginBottom:'8px' }}>
+          <p style={{ fontWeight:'bold', fontSize:'13px', color:'#92400e', margin:'0 0 6px' }}>
+            Cabris ramassés — total (sale)
           </p>
           <input type="number" min="0"
             value={cabrisReprisTotal}
             onChange={e => setCabrisReprisTotal(e.target.value)}
             placeholder="0"
-            style={{ width:'100%', padding:'16px', fontSize:'48px', fontWeight:'bold', textAlign:'center',
-              border: cabrisReprisTotal === '' ? '3px solid #ef4444' : '3px solid #fde68a',
-              borderRadius:'12px', outline:'none', boxSizing:'border-box', color:'#92400e' }}
+            style={{ width:'100%', padding:'8px', fontSize:'36px', fontWeight:'bold', textAlign:'center',
+              border: cabrisReprisTotal === '' ? '2px solid #ef4444' : '2px solid #fde68a',
+              borderRadius:'8px', outline:'none', boxSizing:'border-box', color:'#92400e' }}
           />
           {cabrisReprisTotal === '' && (
-            <p style={{ color:'#ef4444', fontSize:'13px', margin:'8px 0 0', textAlign:'center' }}>
-              Obligatoire — entrez 0 si aucun cabri ramasse
+            <p style={{ color:'#ef4444', fontSize:'12px', margin:'4px 0 0', textAlign:'center' }}>
+              Obligatoire — entrez 0 si aucun cabri ramassé
             </p>
           )}
         </div>
 
         {/* Commentaire de livraison */}
-        <div style={{ marginBottom:'20px' }}>
-          <p style={{ fontSize:'17px', fontWeight:'bold', marginBottom:'10px' }}>Commentaire</p>
-          <textarea value={commentaire} onChange={e => setCommentaire(e.target.value)} rows={3}
-            placeholder="Incident, observation, demande particuliere..."
-            style={{ width:'100%', padding:'14px', fontSize:'15px', border:'2px solid #d1d5db', borderRadius:'12px', outline:'none', resize:'vertical', boxSizing:'border-box' }}
+        <div style={{ marginBottom:'8px' }}>
+          <p style={{ fontSize:'14px', fontWeight:'bold', marginBottom:'4px' }}>Commentaire</p>
+          <textarea value={commentaire} onChange={e => setCommentaire(e.target.value)} rows={2}
+            placeholder="Incident, observation, demande particulière..."
+            style={{ width:'100%', padding:'8px', fontSize:'14px', border:'2px solid #d1d5db', borderRadius:'8px', outline:'none', resize:'vertical', boxSizing:'border-box' }}
           />
         </div>
 
-        <div style={{ marginBottom:'28px', background:'#f0f9ff', border:'2px solid #bae6fd', borderRadius:'16px', padding:'20px' }}>
-          <p style={{ fontSize:'18px', fontWeight:'bold', marginBottom:'16px', color:'#0369a1' }}>
-            📷 Photos de livraison {photos.length > 0 && `(${photos.length})`}
+        <div style={{ marginBottom:'10px', background:'#f0f9ff', border:'2px solid #bae6fd', borderRadius:'12px', padding:'10px 12px' }}>
+          <p style={{ fontSize:'14px', fontWeight:'bold', marginBottom:'8px', color:'#0369a1' }}>
+            📷 Photos {photos.length > 0 && `(${photos.length})`}
           </p>
           <input ref={refCamera}  type="file" accept="image/*" capture="environment" onChange={traiterFichiers} style={{ position:'absolute', width:'1px', height:'1px', opacity:0, pointerEvents:'none' }} />
           <input ref={refGalerie} type="file" accept="image/*" multiple onChange={traiterFichiers} style={{ position:'absolute', width:'1px', height:'1px', opacity:0, pointerEvents:'none' }} />
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'16px' }}>
-            <button onClick={() => refCamera.current.click()}  style={btnStyle('#0284c7')}>📷 Appareil photo</button>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'8px' }}>
+            <button onClick={() => refCamera.current.click()}  style={btnStyle('#0284c7')}>📷 Photo</button>
             <button onClick={() => refGalerie.current.click()} style={btnStyle('#7c3aed')}>🖼️ Galerie</button>
           </div>
           {photos.length === 0 ? (
-            <div style={{ textAlign:'center', padding:'20px', color:'#94a3b8', border:'2px dashed #cbd5e1', borderRadius:'10px' }}>Aucune photo prise</div>
+            <div style={{ textAlign:'center', padding:'12px', color:'#94a3b8', border:'2px dashed #cbd5e1', borderRadius:'8px', fontSize:'13px' }}>Aucune photo prise</div>
           ) : (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
               {photos.map(photo => (
-                <div key={photo.id} style={{ position:'relative', borderRadius:'10px', overflow:'hidden', border:'2px solid #e2e8f0' }}>
+                <div key={photo.id} style={{ position:'relative', borderRadius:'8px', overflow:'hidden', border:'2px solid #e2e8f0' }}>
                   <img src={photo.data} alt="livraison" onClick={() => setPhotoAgrandie(photo)}
-                    style={{ width:'100%', height:'110px', objectFit:'cover', display:'block', cursor:'pointer' }} />
+                    style={{ width:'100%', height:'80px', objectFit:'cover', display:'block', cursor:'pointer' }} />
                   <div style={{ position:'absolute', top:0, left:0, right:0, background:'rgba(0,0,0,0.45)', padding:'4px 8px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                     <span style={{ color:'white', fontSize:'11px' }}>🕐 {photo.heure}</span>
                     <button onClick={(e) => { e.stopPropagation(); supprimerPhoto(photo.id); }}
@@ -1407,8 +1397,8 @@ function VueClient({ client, onDepart, tournee }) {
             });
           }}
           disabled={cabrisReprisTotal === ''}
-          style={{ width:'100%', padding:'24px', background: cabrisReprisTotal === '' ? '#9ca3af' : '#16a34a', color:'white', border:'none', borderRadius:'14px', fontSize:'22px', fontWeight:'bold', cursor: cabrisReprisTotal === '' ? 'not-allowed' : 'pointer' }}>
-          <ArrowRight size={26} style={{ verticalAlign:'middle', marginRight:'10px' }} />
+          style={{ width:'100%', padding:'18px', background: cabrisReprisTotal === '' ? '#9ca3af' : '#16a34a', color:'white', border:'none', borderRadius:'12px', fontSize:'18px', fontWeight:'bold', cursor: cabrisReprisTotal === '' ? 'not-allowed' : 'pointer' }}>
+          <ArrowRight size={22} style={{ verticalAlign:'middle', marginRight:'8px' }} />
           VALIDER ET DÉPART
         </button>
       </div>
