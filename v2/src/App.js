@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const APP_VERSION = '2.0.4';
+const APP_VERSION = '2.0.5';
 
 // ─── Helper : parser les lignes Excel (format ID_Cabri — une ligne = un cabri) ─
 // Règles :
@@ -1493,8 +1493,8 @@ function VueDecharge({ onDechargeTerminee }) {
           Déchargement du camion
         </h2>
 
-        <div style={{ background:'#fef3c7', border:'1px solid #fde68a', borderRadius:'10px', padding:'10px', marginBottom:'16px' }}>
-          <p style={{ color:'#92400e', fontSize:'13px', margin:0 }}>⛽ Pensez à faire le plein du camion !</p>
+        <div style={{ background:'#fef3c7', border:'2px solid #f59e0b', borderRadius:'12px', padding:'18px', marginBottom:'20px' }}>
+          <p style={{ color:'#92400e', fontSize:'20px', fontWeight:'bold', margin:0 }}>⛽ Pensez à faire le plein du camion !</p>
         </div>
 
         <button onClick={onDechargeTerminee}
