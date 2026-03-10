@@ -547,20 +547,45 @@ function VueImport({ onImport, onConfig }) {
 }
 
 
+// ─── Sons feedback scan QR (Web Audio API — aucun fichier externe) ───────────
+function _jouerNotes(notes) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    notes.forEach(({ freq, debut, duree, type = 'sine' }) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.25, ctx.currentTime + debut);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + debut + duree);
+      osc.start(ctx.currentTime + debut);
+      osc.stop(ctx.currentTime + debut + duree + 0.05);
+    });
+  } catch(e) { /* AudioContext non dispo */ }
+}
+const jouerSonOK     = () => _jouerNotes([{ freq:880, debut:0, duree:0.12 }, { freq:1320, debut:0.10, duree:0.18 }]);
+const jouerSonErreur = () => _jouerNotes([{ freq:220, debut:0, duree:0.20, type:'sawtooth' }, { freq:180, debut:0.18, duree:0.28, type:'sawtooth' }]);
+const jouerSonDejaLu = () => _jouerNotes([{ freq:660, debut:0, duree:0.09 }]);
+
 // ─── Écran de récapitulatif + chargement cabris ──────────────────────────────
 // ─── Scanner QR plein écran ───────────────────────────────────────────────────
-function VueScanner({ onScan, onFermer, titre }) {
+// feedback : null | { type: 'ok'|'anomalie'|'dejaLu', ts: number }
+function VueScanner({ onScan, onFermer, titre, feedback }) {
   const videoRef  = React.useRef(null);
   const streamRef = React.useRef(null);
   const timerRef  = React.useRef(null);
-  const [erreur, setErreur]           = useState('');
-  const [actif, setActif]             = useState(false);
-  const [dernierScan, setDernierScan] = useState(null);
+  const [erreur, setErreur]               = useState('');
+  const [actif, setActif]                 = useState(false);
+  const [dernierScan, setDernierScan]     = useState(null); // { val, heure, statut }
   const [saisieManuelle, setSaisieManuelle] = useState('');
-  const derniereValRef = React.useRef('');
+  const [saisieOuverte, setSaisieOuverte] = useState(false);
+  const derniereValRef  = React.useRef('');
   const dernierTempsRef = React.useRef(0);
   const supporte = 'BarcodeDetector' in window;
 
+  // ── Démarrage caméra ──
   useEffect(() => {
     let mounted = true;
     if (!supporte) return;
@@ -570,9 +595,9 @@ function VueScanner({ onScan, onFermer, titre }) {
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play().then(() => { if (mounted) setActif(true); }).catch(e => {
-            if (mounted) setErreur('Impossible de démarrer la caméra : ' + e.message);
-          });
+          videoRef.current.play()
+            .then(() => { if (mounted) setActif(true); })
+            .catch(e => { if (mounted) setErreur('Impossible de démarrer la caméra : ' + e.message); });
         }
       }).catch(() => {
         if (mounted) setErreur("Accès caméra refusé. Autorisez l'accès dans les paramètres du navigateur.");
@@ -584,6 +609,7 @@ function VueScanner({ onScan, onFermer, titre }) {
     };
   }, [supporte]);
 
+  // ── Détection QR toutes les 150 ms ──
   useEffect(() => {
     if (!actif) return;
     const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
@@ -596,9 +622,9 @@ function VueScanner({ onScan, onFermer, titre }) {
           const val = codes[0].rawValue.trim();
           const now = Date.now();
           if (val && (val !== derniereValRef.current || now - dernierTempsRef.current > 2000)) {
-            derniereValRef.current = val;
+            derniereValRef.current  = val;
             dernierTempsRef.current = now;
-            setDernierScan({ val, heure: new Date().toLocaleTimeString('fr-FR') });
+            setDernierScan({ val, heure: new Date().toLocaleTimeString('fr-FR'), statut: null });
             onScan(val);
           }
         }
@@ -607,16 +633,46 @@ function VueScanner({ onScan, onFermer, titre }) {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [actif, onScan]);
 
+  // ── Réaction au feedback parent : son + couleur ──
+  useEffect(() => {
+    if (!feedback) return;
+    if (feedback.type === 'ok')       jouerSonOK();
+    if (feedback.type === 'anomalie') jouerSonErreur();
+    if (feedback.type === 'dejaLu')   jouerSonDejaLu();
+    setDernierScan(prev => prev ? { ...prev, statut: feedback.type } : prev);
+  }, [feedback]);
+
   const validerSaisie = () => {
     const val = saisieManuelle.trim();
     if (!val) return;
+    setDernierScan({ val, heure: new Date().toLocaleTimeString('fr-FR'), statut: null });
     onScan(val);
-    setDernierScan({ val, heure: new Date().toLocaleTimeString('fr-FR') });
     setSaisieManuelle('');
+  };
+
+  // Couleur et icône selon statut
+  const couleurStatut = (statut) => {
+    if (statut === 'ok')       return '#86efac';
+    if (statut === 'anomalie') return '#fca5a5';
+    if (statut === 'dejaLu')   return '#fde68a';
+    return '#94a3b8';
+  };
+  const iconeStatut = (statut) => {
+    if (statut === 'ok')       return '✅';
+    if (statut === 'anomalie') return '❌';
+    if (statut === 'dejaLu')   return '⚠️';
+    return '⏳';
+  };
+  const libelleStatut = (statut, val) => {
+    if (statut === 'ok')       return `✅ ${val} — validé`;
+    if (statut === 'anomalie') return `❌ ${val} — inconnu`;
+    if (statut === 'dejaLu')   return `⚠️ ${val} — Déjà lu`;
+    return `⏳ ${val} — en attente...`;
   };
 
   return (
     <div style={{ position:'fixed', inset:0, background:'#0f172a', zIndex:9999, display:'flex', flexDirection:'column' }}>
+
       {/* Header */}
       <div style={{ padding:'14px 18px', background:'rgba(0,0,0,0.85)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
         <span style={{ color:'white', fontSize:'17px', fontWeight:'bold' }}>📷 {titre}</span>
@@ -625,45 +681,93 @@ function VueScanner({ onScan, onFermer, titre }) {
         </button>
       </div>
 
-      {/* Corps : caméra ou fallback saisie */}
+      {/* Corps : caméra ou mode saisie manuelle forcée */}
       {!supporte || erreur ? (
+        /* ── Fallback : pas de caméra ── */
         <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }}>
           <div style={{ background:'#1e293b', borderRadius:'16px', padding:'32px', textAlign:'center', maxWidth:'340px', width:'100%' }}>
-            <p style={{ fontSize:'48px', margin:'0 0 12px' }}>📷</p>
-            {erreur && <p style={{ color:'#fca5a5', fontSize:'14px', marginBottom:'20px', lineHeight:'1.6' }}>{erreur}</p>}
-            {!supporte && <p style={{ color:'#fde68a', fontSize:'14px', marginBottom:'20px', lineHeight:'1.6' }}>
-              Scan automatique non disponible sur ce navigateur.<br/>Saisissez l'identifiant manuellement.
+            <p style={{ fontSize:'48px', margin:'0 0 12px' }}>⌨️</p>
+            {erreur && <p style={{ color:'#fca5a5', fontSize:'14px', marginBottom:'16px', lineHeight:'1.6' }}>{erreur}</p>}
+            {!supporte && <p style={{ color:'#fde68a', fontSize:'14px', marginBottom:'16px', lineHeight:'1.6' }}>
+              Scan automatique non disponible.<br/>Saisissez l'identifiant manuellement.
             </p>}
-            <input
-              type="text" value={saisieManuelle}
+            <input type="text" value={saisieManuelle}
               onChange={e => setSaisieManuelle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && validerSaisie()}
-              placeholder="Ex: CAB-001"
-              style={{ width:'100%', padding:'16px', fontSize:'18px', textAlign:'center', border:'2px solid #475569', borderRadius:'10px', outline:'none', boxSizing:'border-box', background:'#1e293b', color:'white', marginBottom:'12px' }}
+              placeholder="Ex: 12345"
+              style={{ width:'100%', padding:'16px', fontSize:'20px', textAlign:'center', border:'2px solid #475569', borderRadius:'10px', outline:'none', boxSizing:'border-box', background:'#0f172a', color:'white', marginBottom:'12px' }}
               autoFocus
             />
             <button onClick={validerSaisie} disabled={!saisieManuelle.trim()}
               style={{ width:'100%', padding:'14px', background: saisieManuelle.trim() ? '#16a34a' : '#374151', color:'white', border:'none', borderRadius:'10px', fontSize:'16px', fontWeight:'bold', cursor: saisieManuelle.trim() ? 'pointer' : 'not-allowed', marginBottom:'12px' }}>
               ✅ Valider
             </button>
-            {dernierScan && <p style={{ color:'#86efac', fontSize:'13px', margin:0 }}>✅ Dernier : {dernierScan.val}</p>}
+            {dernierScan && (
+              <p style={{ color: couleurStatut(dernierScan.statut), fontSize:'14px', fontWeight:'600', margin:0 }}>
+                {libelleStatut(dernierScan.statut, dernierScan.val)}
+              </p>
+            )}
           </div>
         </div>
       ) : (
+        /* ── Mode caméra ── */
         <>
           <div style={{ flex:1, position:'relative', overflow:'hidden' }}>
             <video ref={videoRef} playsInline muted style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-            {/* Cadre viseur */}
+            {/* Cadre viseur — change couleur selon dernier statut */}
             <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
-              <div style={{ width:'220px', height:'220px', border:'3px solid #22c55e', borderRadius:'16px', boxShadow:'0 0 0 9999px rgba(0,0,0,0.45)' }} />
+              <div style={{
+                width:'220px', height:'220px', borderRadius:'16px',
+                border: `3px solid ${dernierScan ? couleurStatut(dernierScan.statut) : '#22c55e'}`,
+                boxShadow:'0 0 0 9999px rgba(0,0,0,0.45)',
+                transition:'border-color 0.3s'
+              }} />
             </div>
           </div>
-          {/* Pied : retour du dernier scan */}
-          <div style={{ padding:'14px 20px', background:'rgba(0,0,0,0.8)', textAlign:'center', flexShrink:0 }}>
-            {dernierScan
-              ? <p style={{ color:'#86efac', fontSize:'14px', fontWeight:'600', margin:0 }}>✅ Dernier scan : {dernierScan.val} — {dernierScan.heure}</p>
-              : <p style={{ color:'#94a3b8', fontSize:'13px', margin:0 }}>Centrez le QR code dans le cadre vert</p>
-            }
+
+          {/* Pied : saisie manuelle + statut dernier scan */}
+          <div style={{ background:'rgba(0,0,0,0.88)', flexShrink:0 }}>
+
+            {/* Zone saisie manuelle (toggle) */}
+            {saisieOuverte && (
+              <div style={{ padding:'10px 14px', borderBottom:'1px solid rgba(255,255,255,0.1)', display:'flex', gap:'8px', alignItems:'center' }}>
+                <input type="text" value={saisieManuelle}
+                  onChange={e => setSaisieManuelle(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && validerSaisie()}
+                  placeholder="ID cabri (ex: 12345)"
+                  style={{ flex:1, padding:'11px 14px', fontSize:'17px', textAlign:'center', border:'2px solid #475569', borderRadius:'8px', outline:'none', background:'#1e293b', color:'white', boxSizing:'border-box' }}
+                  autoFocus
+                />
+                <button onClick={validerSaisie} disabled={!saisieManuelle.trim()}
+                  style={{ padding:'11px 16px', background: saisieManuelle.trim() ? '#16a34a' : '#374151', color:'white', border:'none', borderRadius:'8px', fontSize:'16px', fontWeight:'bold', cursor: saisieManuelle.trim() ? 'pointer' : 'not-allowed' }}>
+                  ✅
+                </button>
+                <button onClick={() => { setSaisieOuverte(false); setSaisieManuelle(''); }}
+                  style={{ padding:'11px 13px', background:'#374151', color:'white', border:'none', borderRadius:'8px', fontSize:'16px', cursor:'pointer' }}>
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Ligne statut + bouton saisie */}
+            <div style={{ padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center', gap:'10px' }}>
+              <div style={{ flex:1 }}>
+                {dernierScan ? (
+                  <p style={{ margin:0, fontSize:'14px', fontWeight:'700', color: couleurStatut(dernierScan.statut) }}>
+                    {libelleStatut(dernierScan.statut, dernierScan.val)}
+                    <span style={{ fontWeight:'400', color:'#94a3b8', marginLeft:'8px', fontSize:'12px' }}>{dernierScan.heure}</span>
+                  </p>
+                ) : (
+                  <p style={{ margin:0, color:'#94a3b8', fontSize:'13px' }}>Centrez le QR code dans le cadre vert</p>
+                )}
+              </div>
+              <button
+                onClick={() => setSaisieOuverte(v => !v)}
+                title="Saisie manuelle"
+                style={{ padding:'10px 14px', background: saisieOuverte ? '#2563eb' : '#475569', color:'white', border:'none', borderRadius:'8px', fontSize:'15px', cursor:'pointer', flexShrink:0 }}>
+                ✏️
+              </button>
+            </div>
           </div>
         </>
       )}
@@ -719,6 +823,7 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
   const [cabrisScannés, setCabrisScannés]             = useState([]);     // IDs validés
   const [anomaliesChargement, setAnomaliesChargement] = useState([]);     // anomalies signalées
   const [scannerOuvert, setScannerOuvert]             = useState(false);
+  const [feedbackScanner, setFeedbackScanner]         = useState(null);   // feedback son/couleur
   const [anomalieEnCours, setAnomalieEnCours]         = useState(null);   // { id }
 
   const clientsOrdres = ordre.map(i => tournee.clients[i]);
@@ -743,12 +848,17 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
   const toutTraite     = totalAttendu === 0 || totalTraite >= totalAttendu;
 
   const handleScanChargement = React.useCallback((id) => {
-    // Anti-doublon
-    if (cabrisScannés.includes(id) || anomaliesChargement.some(a => a.id === id)) return;
+    // Anti-doublon → son "déjà lu"
+    if (cabrisScannés.includes(id) || anomaliesChargement.some(a => a.id === id)) {
+      setFeedbackScanner({ type: 'dejaLu', ts: Date.now() });
+      return;
+    }
     const cabriInfo = tousLesCabris.find(c => c.id === id);
     if (cabriInfo) {
       setCabrisScannés(prev => [...prev, id]);
+      setFeedbackScanner({ type: 'ok', ts: Date.now() });
     } else {
+      setFeedbackScanner({ type: 'anomalie', ts: Date.now() });
       setScannerOuvert(false);
       setAnomalieEnCours({ id });
     }
@@ -803,6 +913,7 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
           titre="Scanner cabri — Chargement"
           onScan={handleScanChargement}
           onFermer={() => setScannerOuvert(false)}
+          feedback={feedbackScanner}
         />
       )}
 
@@ -1037,6 +1148,7 @@ function VueClient({ client, onDepart, tournee }) {
   const [anomaliesLiv, setAnomaliesLiv]             = useState([]);   // anomalies livraison
   const [scannerLivOuvert, setScannerLivOuvert]     = useState(false);
   const [anomalieLivEnCours, setAnomalieLivEnCours] = useState(null); // { id, message }
+  const [feedbackScannerLiv, setFeedbackScannerLiv] = useState(null); // feedback son/couleur
 
   const modeQRLiv = client.services.some(s => s.cabrisIds?.length > 0);
 
@@ -1045,9 +1157,12 @@ function VueClient({ client, onDepart, tournee }) {
   const toutTraiteLiv       = totalCabrisAttendus === 0 || totalCabrisTraites >= totalCabrisAttendus;
 
   const handleScanLivraison = React.useCallback((id) => {
-    // Anti-doublon
+    // Anti-doublon → son "déjà lu"
     const dejaScanné = Object.values(cabrisScannésLiv).flat().includes(id) || anomaliesLiv.some(a => a.id === id);
-    if (dejaScanné) return;
+    if (dejaScanné) {
+      setFeedbackScannerLiv({ type: 'dejaLu', ts: Date.now() });
+      return;
+    }
 
     // Chercher à quel service de ce client appartient cet ID
     let serviceMatched = null;
@@ -1061,8 +1176,10 @@ function VueClient({ client, onDepart, tournee }) {
         ...prev,
         [serviceMatched.id]: [...(prev[serviceMatched.id] || []), id]
       }));
+      setFeedbackScannerLiv({ type: 'ok', ts: Date.now() });
     } else {
       // Cabri inconnu ou d'un autre client
+      setFeedbackScannerLiv({ type: 'anomalie', ts: Date.now() });
       setScannerLivOuvert(false);
       // Chercher si ce cabri appartient à un autre client de la tournée
       let autreClient = null;
@@ -1113,6 +1230,7 @@ function VueClient({ client, onDepart, tournee }) {
           titre={`Scanner cabris — ${client.nom}`}
           onScan={handleScanLivraison}
           onFermer={() => setScannerLivOuvert(false)}
+          feedback={feedbackScannerLiv}
         />
       )}
       {/* Modal anomalie livraison */}
