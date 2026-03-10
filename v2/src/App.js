@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const APP_VERSION = '2.0.5';
+const APP_VERSION = '2.0.6';
 
 // ─── Helper : parser les lignes Excel (format ID_Cabri — une ligne = un cabri) ─
 // Règles :
@@ -61,9 +61,16 @@ function parserRowsExcel(rows) {
         nom: nomService,
         cabrisIds: [],
         cabrisPrevu: 0,
-        cabrisRecuperes: 0
+        cabrisRecuperes: 0,
+        noteService: row['Note service'] ? String(row['Note service']).trim() : ''
       });
       dernierServiceNom = nomService;
+    }
+
+    // Note de service carry-forward (si note présente sur une ligne du service courant)
+    const noteServiceVal = row['Note service'] ? String(row['Note service']).trim() : '';
+    if (noteServiceVal && current.services.length > 0 && !current.services[current.services.length - 1].noteService) {
+      current.services[current.services.length - 1].noteService = noteServiceVal;
     }
 
     // Ajouter l'ID cabri au service courant (si présent)
@@ -1173,6 +1180,8 @@ function VueClient({ client, onDepart, tournee }) {
   const [anomalieLivEnCours, setAnomalieLivEnCours] = useState(null); // { id, message }
 
   const [noteOuverte, setNoteOuverte] = useState(false);
+  const [notesServicesOuvertes, setNotesServicesOuvertes] = useState({});
+  const toggleNoteService = (id) => setNotesServicesOuvertes(prev => ({ ...prev, [id]: !prev[id] }));
 
   const modeQRLiv = client.services.some(s => s.cabrisIds?.length > 0);
 
@@ -1309,6 +1318,19 @@ function VueClient({ client, onDepart, tournee }) {
                     </span>
                   );
                 })}
+              </div>
+            )}
+            {/* Note de service collapsible */}
+            {sv.noteService && (
+              <div style={{ marginTop:'6px', background:'#fef3c7', border:'1px solid #fde68a', borderRadius:'8px', overflow:'hidden' }}>
+                <button onClick={() => toggleNoteService(sv.id)}
+                  style={{ width:'100%', padding:'5px 10px', background:'transparent', border:'none', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', textAlign:'left' }}>
+                  <span style={{ fontWeight:'700', color:'#92400e', fontSize:'11px' }}>📍 Note service</span>
+                  <span style={{ color:'#92400e', fontSize:'14px', lineHeight:1 }}>{notesServicesOuvertes[sv.id] ? '▲' : '▼'}</span>
+                </button>
+                {notesServicesOuvertes[sv.id] && (
+                  <p style={{ color:'#374151', margin:0, padding:'0 10px 8px', fontSize:'12px', lineHeight:'1.5', whiteSpace:'pre-wrap' }}>{sv.noteService}</p>
+                )}
               </div>
             )}
           </div>
@@ -1509,7 +1531,7 @@ function VueDecharge({ onDechargeTerminee }) {
 // ─── Écran rapport final ─────────────────────────────────────────────────────
 function VueRapport({ tournee, clientData, logs, startTime, agentName, onNouvelle, nomTournee, cabrisChargement }) {
   const cfg = chargerConfig();
-  // config est chargé depuis config.json + localStorage via le state
+  const [pdfGenere, setPdfGenere] = useState(false);
 
   const logDepart      = logs.find(l => l.type === 'DEPART_UNITE');
   const logChargement  = logs.find(l => l.type === 'DEBUT_CHARGEMENT');
@@ -1701,6 +1723,7 @@ function VueRapport({ tournee, clientData, logs, startTime, agentName, onNouvell
     }
     // 1. Télécharger le PDF
     genererPDF();
+    setPdfGenere(true);
     // 2. Boucler la tournée : effacer la session APRÈS génération du PDF
     // 2. Ouvrir le client mail
     setTimeout(() => {
@@ -1770,10 +1793,15 @@ Cordialement`
         </button>
 
 
-        <button onClick={onNouvelle}
-          style={{ width:'100%', padding:'22px', background:'#4b5563', color:'white', border:'none', borderRadius:'14px', fontSize:'20px', fontWeight:'bold', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px' }}>
-          <Home size={24} /> Nouvelle tournee
+        <button onClick={onNouvelle} disabled={!pdfGenere}
+          style={{ width:'100%', padding:'22px', background: pdfGenere ? '#4b5563' : '#d1d5db', color: pdfGenere ? 'white' : '#9ca3af', border:'none', borderRadius:'14px', fontSize:'20px', fontWeight:'bold', cursor: pdfGenere ? 'pointer' : 'not-allowed', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px' }}>
+          <Home size={24} /> Nouvelle tournée
         </button>
+        {!pdfGenere && (
+          <p style={{ textAlign:'center', fontSize:'12px', color:'#9ca3af', marginTop:'6px', marginBottom:0 }}>
+            ⚠️ Générez le PDF avant de commencer une nouvelle tournée
+          </p>
+        )}
 
         {/* ── Bilan QR (affiché uniquement si mode QR activé) ── */}
         {(() => {
