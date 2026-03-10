@@ -1442,19 +1442,11 @@ function VueClient({ client, onDepart, tournee }) {
 
 // ─── Écran fin de tournée (retour unité) ────────────────────────────────────
 // ─── Écran retour à l'unité ────────────────────────────────────────────────
-function VueRetourUnite({ onArriveeUnite, adresseUnite, logs }) {
+function VueRetourUnite({ onArriveeUnite, adresseUnite }) {
   const ouvrirWaze = () => {
     const dest = adresseUnite || 'unité de départ';
     window.open(`https://waze.com/ul?q=${encodeURIComponent(dest)}&navigate=yes`, '_blank');
   };
-  const dernierDepart = [...logs].reverse().find(l => l.type === 'DEPART_CLIENT');
-  const refDepart = React.useRef(dernierDepart ? new Date(dernierDepart.timestamp) : new Date());
-  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - refDepart.current) / 1000));
-  useEffect(() => {
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - refDepart.current) / 1000)), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 
   return (
     <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#15803d,#166534)', display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
@@ -1463,15 +1455,9 @@ function VueRetourUnite({ onArriveeUnite, adresseUnite, logs }) {
         <h2 style={{ fontSize:'24px', fontWeight:'bold', color:'#1f2937', marginBottom:'6px' }}>
           Tous les clients sont livrés !
         </h2>
-        <p style={{ color:'#6b7280', fontSize:'14px', marginBottom:'18px' }}>
+        <p style={{ color:'#6b7280', fontSize:'14px', marginBottom:'24px' }}>
           Retournez à l'unité pour décharger le linge sale.
         </p>
-
-        {/* Chrono depuis la dernière livraison */}
-        <div style={{ background:'#f0fdf4', border:'2px solid #86efac', borderRadius:'12px', padding:'12px', marginBottom:'16px' }}>
-          <p style={{ color:'#15803d', fontSize:'12px', fontWeight:'600', margin:'0 0 4px' }}>⏱️ Temps depuis la dernière livraison</p>
-          <p style={{ fontSize:'32px', fontWeight:'bold', color:'#166534', margin:0, fontFamily:'monospace' }}>{fmt(elapsed)}</p>
-        </div>
 
         {adresseUnite && (
           <button onClick={ouvrirWaze}
@@ -1492,13 +1478,9 @@ function VueRetourUnite({ onArriveeUnite, adresseUnite, logs }) {
 // ─── Écran déchargement ───────────────────────────────────────────────────────
 function VueDecharge({ onDechargeTerminee, logs }) {
   const logArrivee = logs.find(l => l.type === 'ARRIVEE_UNITE');
-  const refArrivee = React.useRef(logArrivee ? new Date(logArrivee.timestamp) : new Date());
-  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - refArrivee.current) / 1000));
-  useEffect(() => {
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - refArrivee.current) / 1000)), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  const heureArrivee = logArrivee
+    ? new Date(logArrivee.timestamp).toLocaleTimeString('fr-FR')
+    : new Date().toLocaleTimeString('fr-FR');
 
   return (
     <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#92400e,#78350f)', display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
@@ -1509,17 +1491,11 @@ function VueDecharge({ onDechargeTerminee, logs }) {
         </h2>
 
         {/* Heure d'arrivée */}
-        <div style={{ background:'#fef3c7', border:'2px solid #fde68a', borderRadius:'12px', padding:'10px', marginBottom:'12px' }}>
-          <p style={{ color:'#92400e', fontSize:'12px', fontWeight:'600', margin:'0 0 2px' }}>🏠 Arrivée à l'unité</p>
-          <p style={{ fontSize:'22px', fontWeight:'bold', color:'#78350f', margin:0 }}>
-            {refArrivee.current.toLocaleTimeString('fr-FR')}
+        <div style={{ background:'#fef3c7', border:'2px solid #fde68a', borderRadius:'12px', padding:'14px', marginBottom:'18px' }}>
+          <p style={{ color:'#92400e', fontSize:'12px', fontWeight:'600', margin:'0 0 4px' }}>🏠 Arrivée à l'unité</p>
+          <p style={{ fontSize:'28px', fontWeight:'bold', color:'#78350f', margin:0 }}>
+            {heureArrivee}
           </p>
-        </div>
-
-        {/* Chrono déchargement */}
-        <div style={{ background:'#fff7ed', border:'2px solid #fed7aa', borderRadius:'12px', padding:'14px', marginBottom:'18px' }}>
-          <p style={{ color:'#c2410c', fontSize:'12px', fontWeight:'600', margin:'0 0 6px' }}>⏱️ Temps de déchargement</p>
-          <p style={{ fontSize:'44px', fontWeight:'bold', color:'#9a3412', margin:0, fontFamily:'monospace' }}>{fmt(elapsed)}</p>
         </div>
 
         <div style={{ background:'#fef3c7', border:'1px solid #fde68a', borderRadius:'10px', padding:'10px', marginBottom:'16px' }}>
@@ -1557,29 +1533,36 @@ function VueRapport({ tournee, clientData, logs, startTime, agentName, onNouvell
     const mR = 12;     // marge droite
     const contW = pageW - mL - mR; // largeur utile = 186mm
 
-    // ── En-tête compact : logo + titre sur la même ligne ──
-    try { doc.addImage(LOGO_BDL_PDF, 'JPEG', mL, 6, 22, 15); } catch(e) {}
-    doc.setFontSize(14); doc.setFont(undefined, 'bold');
-    doc.text('BDL-Livraison — Rapport de tournee', mL + 25, 12);
-    doc.setFontSize(8); doc.setFont(undefined, 'normal');
-    doc.setTextColor(100, 100, 100);
+    // ── En-tête : logo à gauche, infos à droite sur 3 lignes ──
+    try { doc.addImage(LOGO_BDL_PDF, 'JPEG', mL, 5, 22, 15); } catch(e) {}
 
-    // Infos tournée sur une seule ligne condensée
-    const dateStr  = new Date(tournee.date).toLocaleDateString('fr-FR');
+    const dateStr     = new Date(tournee.date).toLocaleDateString('fr-FR');
     const arrStr      = logChargement ? new Date(logChargement.timestamp).toLocaleTimeString('fr-FR') : '--';
     const depStr      = logDepart     ? new Date(logDepart.timestamp).toLocaleTimeString('fr-FR')     : '--';
     const arriveeStr  = logArrivee    ? new Date(logArrivee.timestamp).toLocaleTimeString('fr-FR')    : '--';
     const finStr      = logFin        ? new Date(logFin.timestamp).toLocaleTimeString('fr-FR')        : '--';
     const dureeStr    = `${Math.floor(dureeTotal/60)}h${String(dureeTotal%60).padStart(2,'0')}`;
-    const dechargeStr = dureeDecharge !== null ? `${dureeDecharge}min` : '--';
-    doc.text(`${nomTournee || ''}  |  ${agentName}  |  ${dateStr}  |  Chgt: ${arrStr}  Dep: ${depStr}  Arr: ${arriveeStr}  Fin: ${finStr}  Decharge: ${dechargeStr}  Duree: ${dureeStr}`, mL + 25, 18);
+    const dechargeStr = dureeDecharge !== null ? `${dureeDecharge} min` : '--';
+
+    // Ligne 1 — Titre
+    doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(37, 99, 235);
+    doc.text('BDL-Livraison — Rapport de tournee', mL + 25, 10);
+
+    // Ligne 2 — Tournée / Chauffeur / Date / Durée totale
+    doc.setFontSize(8); doc.setFont(undefined, 'normal'); doc.setTextColor(60, 60, 60);
+    doc.text(`${nomTournee || 'Tournée'}   |   ${agentName}   |   ${dateStr}   |   Durée totale : ${dureeStr}`, mL + 25, 16);
+
+    // Ligne 3 — Chronologie horaire
+    doc.setFontSize(7.5); doc.setTextColor(100, 100, 100);
+    doc.text(`Chgt : ${arrStr}   →   Départ : ${depStr}   →   Arrivée unité : ${arriveeStr}   →   Fin décharge : ${finStr}   (décharge : ${dechargeStr})`, mL + 25, 21);
+
     doc.setTextColor(0, 0, 0);
 
     // Ligne séparatrice
     doc.setDrawColor(37, 99, 235); doc.setLineWidth(0.6);
-    doc.line(mL, 23, pageW - mR, 23);
+    doc.line(mL, 25, pageW - mR, 25);
 
-    let y = 28;
+    let y = 30;
 
     tournee.clients.forEach((client, i) => {
       const d = clientData[client.id];
