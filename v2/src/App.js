@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const APP_VERSION = '2.0.2';
+const APP_VERSION = '2.0.3';
 
 // ─── Helper : parser les lignes Excel (format ID_Cabri — une ligne = un cabri) ─
 // Règles :
@@ -1172,6 +1172,8 @@ function VueClient({ client, onDepart, tournee }) {
   const [scannerLivOuvert, setScannerLivOuvert]     = useState(false);
   const [anomalieLivEnCours, setAnomalieLivEnCours] = useState(null); // { id, message }
 
+  const [noteOuverte, setNoteOuverte] = useState(false);
+
   const modeQRLiv = client.services.some(s => s.cabrisIds?.length > 0);
 
   const totalCabrisAttendus = client.services.reduce((t, s) => t + (s.cabrisIds?.length || 0), 0);
@@ -1269,9 +1271,15 @@ function VueClient({ client, onDepart, tournee }) {
         </div>
 
         {client.noteTournee && (
-          <div style={{ background:'#fef3c7', border:'2px solid #fde68a', borderRadius:'10px', padding:'8px 12px', marginBottom:'8px' }}>
-            <p style={{ fontWeight:'700', color:'#92400e', marginBottom:'2px', fontSize:'12px' }}>📝 Note de tournée</p>
-            <p style={{ color:'#374151', margin:0, fontSize:'13px', lineHeight:'1.5', whiteSpace:'pre-wrap' }}>{client.noteTournee}</p>
+          <div style={{ background:'#fef3c7', border:'2px solid #fde68a', borderRadius:'10px', marginBottom:'8px', overflow:'hidden' }}>
+            <button onClick={() => setNoteOuverte(v => !v)}
+              style={{ width:'100%', padding:'8px 12px', background:'transparent', border:'none', cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center', textAlign:'left' }}>
+              <span style={{ fontWeight:'700', color:'#92400e', fontSize:'12px' }}>📝 Note de tournée</span>
+              <span style={{ color:'#92400e', fontSize:'16px', lineHeight:1 }}>{noteOuverte ? '▲' : '▼'}</span>
+            </button>
+            {noteOuverte && (
+              <p style={{ color:'#374151', margin:0, padding:'0 12px 10px', fontSize:'13px', lineHeight:'1.5', whiteSpace:'pre-wrap' }}>{client.noteTournee}</p>
+            )}
           </div>
         )}
         <h3 style={{ fontSize:'16px', fontWeight:'bold', marginBottom:'6px' }}>Services à livrer</h3>
@@ -1548,21 +1556,24 @@ function VueRapport({ tournee, clientData, logs, startTime, agentName, onNouvell
     doc.setFontSize(13); doc.setFont(undefined, 'bold'); doc.setTextColor(37, 99, 235);
     doc.text('BDL-Livraison — Rapport de tournee', mL + 25, 10);
 
-    // Ligne 2 — Tournée / Chauffeur / Date / Durée totale
+    // Ligne 2 — Tournée / Chauffeur / Date
     doc.setFontSize(8); doc.setFont(undefined, 'normal'); doc.setTextColor(60, 60, 60);
-    doc.text(`${nomTournee || 'Tournée'}   |   ${agentName}   |   ${dateStr}   |   Durée totale : ${dureeStr}`, mL + 25, 16);
+    doc.text(`${nomTournee || 'Tournée'}   |   ${agentName}   |   ${dateStr}`, mL + 25, 16);
 
-    // Ligne 3 — Chronologie horaire
+    // Ligne 3 — Aller : chargement → départ → arrivée unité
     doc.setFontSize(7.5); doc.setTextColor(100, 100, 100);
-    doc.text(`Chgt : ${arrStr}   →   Départ : ${depStr}   →   Arrivée unité : ${arriveeStr}   →   Fin décharge : ${finStr}   (décharge : ${dechargeStr})`, mL + 25, 21);
+    doc.text(`Chgt : ${arrStr}   →   Départ : ${depStr}   →   Arrivée unité : ${arriveeStr}`, mL + 25, 21);
+
+    // Ligne 4 — Fin + durées
+    doc.text(`Fin décharge : ${finStr}   |   Durée déchargement : ${dechargeStr}   |   Durée totale : ${dureeStr}`, mL + 25, 26);
 
     doc.setTextColor(0, 0, 0);
 
     // Ligne séparatrice
     doc.setDrawColor(37, 99, 235); doc.setLineWidth(0.6);
-    doc.line(mL, 25, pageW - mR, 25);
+    doc.line(mL, 30, pageW - mR, 30);
 
-    let y = 30;
+    let y = 35;
 
     tournee.clients.forEach((client, i) => {
       const d = clientData[client.id];
