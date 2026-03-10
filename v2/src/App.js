@@ -823,6 +823,7 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
   const [anomaliesChargement, setAnomaliesChargement] = useState([]);     // anomalies signalées
   const [scannerOuvert, setScannerOuvert]             = useState(false);
   const [anomalieEnCours, setAnomalieEnCours]         = useState(null);   // { id }
+  const [chargementConfirme, setChargementConfirme]   = useState(false);  // mode sans QR
 
   const clientsOrdres = ordre.map(i => tournee.clients[i]);
   const totalCabris = tournee.clients.reduce((t, c) => t + c.services.reduce((s, sv) => s + sv.cabrisPrevu, 0), 0);
@@ -844,6 +845,8 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
   const totalAttendu   = tousLesCabris.length;
   const totalTraite    = cabrisScannés.length + anomaliesChargement.length;
   const toutTraite     = totalAttendu === 0 || totalTraite >= totalAttendu;
+  // Départ autorisé : en mode QR au moins 1 cabri traité, sinon checkbox manuelle
+  const departAutorise = modeQR ? totalTraite > 0 : chargementConfirme;
 
   const handleScanChargement = React.useCallback((id) => {
     if (cabrisScannés.includes(id) || anomaliesChargement.some(a => a.id === id)) {
@@ -1083,9 +1086,29 @@ function VueRecap({ tournee, onDemarrer, onRetour }) {
               </div>
             )}
 
+            {/* Confirmation chargement (mode sans QR uniquement) */}
+            {!modeQR && (
+              <label style={{ display:'flex', alignItems:'center', gap:'12px', background:'#f0fdf4', border:`2px solid ${chargementConfirme ? '#86efac' : '#fca5a5'}`, borderRadius:'12px', padding:'14px', marginBottom:'10px', cursor:'pointer' }}>
+                <input type="checkbox" checked={chargementConfirme} onChange={e => setChargementConfirme(e.target.checked)}
+                  style={{ width:'22px', height:'22px', cursor:'pointer', accentColor:'#16a34a' }} />
+                <span style={{ fontWeight:'bold', fontSize:'15px', color: chargementConfirme ? '#15803d' : '#dc2626' }}>
+                  {chargementConfirme ? '✅ Camion chargé confirmé' : '⚠️ Confirmer que le camion est chargé'}
+                </span>
+              </label>
+            )}
+
+            {/* Message blocage QR */}
+            {modeQR && totalTraite === 0 && (
+              <div style={{ background:'#fef2f2', border:'2px solid #fca5a5', borderRadius:'10px', padding:'10px 14px', marginBottom:'10px', textAlign:'center' }}>
+                <p style={{ color:'#dc2626', fontWeight:'bold', fontSize:'14px', margin:0 }}>
+                  🚫 Scanner au moins un cabri avant de partir
+                </p>
+              </div>
+            )}
+
             {/* Bouton DÉPART */}
-            <button onClick={confirmerDepart}
-              style={{ width:'100%', padding:'16px', background: modeQR && !toutTraite ? '#f59e0b' : '#16a34a', color:'white', border:'none', borderRadius:'12px', fontSize:'18px', fontWeight:'bold', cursor:'pointer' }}>
+            <button onClick={confirmerDepart} disabled={!departAutorise}
+              style={{ width:'100%', padding:'16px', background: !departAutorise ? '#9ca3af' : (modeQR && !toutTraite ? '#f59e0b' : '#16a34a'), color:'white', border:'none', borderRadius:'12px', fontSize:'18px', fontWeight:'bold', cursor: departAutorise ? 'pointer' : 'not-allowed' }}>
               <Clock size={22} style={{ verticalAlign:'middle', marginRight:'8px' }} />
               {modeQR && !toutTraite ? `🚚 DÉPART (${totalAttendu - totalTraite} manquant(s))` : '🚚 DÉPART DE L\'UNITÉ'}
             </button>
@@ -1418,45 +1441,94 @@ function VueClient({ client, onDepart, tournee }) {
 }
 
 // ─── Écran fin de tournée (retour unité) ────────────────────────────────────
-function VueFin({ onDecharge, adresseUnite }) {
-  const ouvrirWazeUnite = () => {
+// ─── Écran retour à l'unité ────────────────────────────────────────────────
+function VueRetourUnite({ onArriveeUnite, adresseUnite, logs }) {
+  const ouvrirWaze = () => {
     const dest = adresseUnite || 'unité de départ';
     window.open(`https://waze.com/ul?q=${encodeURIComponent(dest)}&navigate=yes`, '_blank');
   };
+  const dernierDepart = [...logs].reverse().find(l => l.type === 'DEPART_CLIENT');
+  const refDepart = React.useRef(dernierDepart ? new Date(dernierDepart.timestamp) : new Date());
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - refDepart.current) / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - refDepart.current) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 
   return (
-    <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#15803d,#166534)', display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }}>
-      <div style={{ background:'white', borderRadius:'20px', padding:'40px', maxWidth:'480px', width:'100%', textAlign:'center', boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}>
-        <CheckCircle size={80} style={{ color:'#16a34a', margin:'0 auto 20px' }} />
-        <h2 style={{ fontSize:'28px', fontWeight:'bold', color:'#1f2937', marginBottom:'12px' }}>
+    <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#15803d,#166534)', display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
+      <div style={{ background:'white', borderRadius:'20px', padding:'28px', maxWidth:'480px', width:'100%', textAlign:'center', boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}>
+        <CheckCircle size={64} style={{ color:'#16a34a', margin:'0 auto 14px' }} />
+        <h2 style={{ fontSize:'24px', fontWeight:'bold', color:'#1f2937', marginBottom:'6px' }}>
           Tous les clients sont livrés !
         </h2>
-        <p style={{ color:'#6b7280', fontSize:'17px', marginBottom:'32px' }}>
+        <p style={{ color:'#6b7280', fontSize:'14px', marginBottom:'18px' }}>
           Retournez à l'unité pour décharger le linge sale.
         </p>
 
+        {/* Chrono depuis la dernière livraison */}
+        <div style={{ background:'#f0fdf4', border:'2px solid #86efac', borderRadius:'12px', padding:'12px', marginBottom:'16px' }}>
+          <p style={{ color:'#15803d', fontSize:'12px', fontWeight:'600', margin:'0 0 4px' }}>⏱️ Temps depuis la dernière livraison</p>
+          <p style={{ fontSize:'32px', fontWeight:'bold', color:'#166534', margin:0, fontFamily:'monospace' }}>{fmt(elapsed)}</p>
+        </div>
+
         {adresseUnite && (
-          <button onClick={ouvrirWazeUnite}
-            style={{ width:'100%', padding:'22px', background:'#2563eb', color:'white', border:'none', borderRadius:'14px', fontSize:'19px', fontWeight:'bold', cursor:'pointer', marginBottom:'12px', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px' }}>
-            <MapPin size={24} /> Retour à l'unité via Waze
+          <button onClick={ouvrirWaze}
+            style={{ width:'100%', padding:'16px', background:'#2563eb', color:'white', border:'none', borderRadius:'12px', fontSize:'16px', fontWeight:'bold', cursor:'pointer', marginBottom:'10px', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px' }}>
+            <MapPin size={20} /> Retour à l'unité via Waze
           </button>
         )}
 
-        <div style={{ background:'#fef3c7', border:'2px solid #fde68a', borderRadius:'12px', padding:'16px', marginBottom:'24px' }}>
-          <p style={{ fontWeight:'700', color:'#92400e', margin:'0 0 6px', fontSize:'15px' }}>⏱️ Horodatage en cours</p>
-          <p style={{ color:'#b45309', fontSize:'14px', margin:0 }}>
-            Le temps de tournée inclut le déchargement.<br/>
-            Cliquez ci-dessous une fois le camion déchargé.
+        <button onClick={onArriveeUnite}
+          style={{ width:'100%', padding:'20px', background:'#16a34a', color:'white', border:'none', borderRadius:'14px', fontSize:'20px', fontWeight:'bold', cursor:'pointer' }}>
+          🏠 Je suis arrivé à l'unité
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Écran déchargement ───────────────────────────────────────────────────────
+function VueDecharge({ onDechargeTerminee, logs }) {
+  const logArrivee = logs.find(l => l.type === 'ARRIVEE_UNITE');
+  const refArrivee = React.useRef(logArrivee ? new Date(logArrivee.timestamp) : new Date());
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - refArrivee.current) / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - refArrivee.current) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+
+  return (
+    <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#92400e,#78350f)', display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
+      <div style={{ background:'white', borderRadius:'20px', padding:'28px', maxWidth:'480px', width:'100%', textAlign:'center', boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}>
+        <div style={{ fontSize:'56px', margin:'0 auto 14px' }}>🚚</div>
+        <h2 style={{ fontSize:'24px', fontWeight:'bold', color:'#1f2937', marginBottom:'6px' }}>
+          Déchargement du camion
+        </h2>
+
+        {/* Heure d'arrivée */}
+        <div style={{ background:'#fef3c7', border:'2px solid #fde68a', borderRadius:'12px', padding:'10px', marginBottom:'12px' }}>
+          <p style={{ color:'#92400e', fontSize:'12px', fontWeight:'600', margin:'0 0 2px' }}>🏠 Arrivée à l'unité</p>
+          <p style={{ fontSize:'22px', fontWeight:'bold', color:'#78350f', margin:0 }}>
+            {refArrivee.current.toLocaleTimeString('fr-FR')}
           </p>
         </div>
 
-        <button onClick={() => {
-            if (window.confirm('⛽ Pensez à faire le plein du camion !\n\nCliquez OK pour clôturer la tournée.')) {
-              onDecharge();
-            }
-          }}
-          style={{ width:'100%', padding:'24px', background:'#dc2626', color:'white', border:'none', borderRadius:'14px', fontSize:'20px', fontWeight:'bold', cursor:'pointer' }}>
-          ✅ Déchargement terminé — Clôturer la tournée
+        {/* Chrono déchargement */}
+        <div style={{ background:'#fff7ed', border:'2px solid #fed7aa', borderRadius:'12px', padding:'14px', marginBottom:'18px' }}>
+          <p style={{ color:'#c2410c', fontSize:'12px', fontWeight:'600', margin:'0 0 6px' }}>⏱️ Temps de déchargement</p>
+          <p style={{ fontSize:'44px', fontWeight:'bold', color:'#9a3412', margin:0, fontFamily:'monospace' }}>{fmt(elapsed)}</p>
+        </div>
+
+        <div style={{ background:'#fef3c7', border:'1px solid #fde68a', borderRadius:'10px', padding:'10px', marginBottom:'16px' }}>
+          <p style={{ color:'#92400e', fontSize:'13px', margin:0 }}>⛽ Pensez à faire le plein du camion !</p>
+        </div>
+
+        <button onClick={onDechargeTerminee}
+          style={{ width:'100%', padding:'20px', background:'#dc2626', color:'white', border:'none', borderRadius:'14px', fontSize:'19px', fontWeight:'bold', cursor:'pointer' }}>
+          ✅ Déchargement terminé — Clôturer
         </button>
       </div>
     </div>
@@ -1468,12 +1540,15 @@ function VueRapport({ tournee, clientData, logs, startTime, agentName, onNouvell
   const cfg = chargerConfig();
   // config est chargé depuis config.json + localStorage via le state
 
-  const logDepart    = logs.find(l => l.type === 'DEPART_UNITE');
-  const logChargement = logs.find(l => l.type === 'DEBUT_CHARGEMENT');
-  const logFin       = logs.find(l => l.type === 'FIN_DECHARGE');
+  const logDepart      = logs.find(l => l.type === 'DEPART_UNITE');
+  const logChargement  = logs.find(l => l.type === 'DEBUT_CHARGEMENT');
+  const logArrivee     = logs.find(l => l.type === 'ARRIVEE_UNITE');
+  const logFin         = logs.find(l => l.type === 'FIN_DECHARGE');
 
   const dureeTotal = (startTime && logFin)
     ? Math.round((new Date(logFin.timestamp) - new Date(startTime)) / 60000) : 0;
+  const dureeDecharge = (logArrivee && logFin)
+    ? Math.round((new Date(logFin.timestamp) - new Date(logArrivee.timestamp)) / 60000) : null;
 
   const creerDocPDF = () => {
     const doc = new jsPDF();
@@ -1491,11 +1566,13 @@ function VueRapport({ tournee, clientData, logs, startTime, agentName, onNouvell
 
     // Infos tournée sur une seule ligne condensée
     const dateStr  = new Date(tournee.date).toLocaleDateString('fr-FR');
-    const arrStr   = logChargement ? new Date(logChargement.timestamp).toLocaleTimeString('fr-FR') : '--';
-    const depStr   = logDepart     ? new Date(logDepart.timestamp).toLocaleTimeString('fr-FR')     : '--';
-    const finStr   = logFin        ? new Date(logFin.timestamp).toLocaleTimeString('fr-FR')        : '--';
-    const dureeStr = `${Math.floor(dureeTotal/60)}h${String(dureeTotal%60).padStart(2,'0')}`;
-    doc.text(`${nomTournee || ''}  |  ${agentName}  |  ${dateStr}  |  Chgt: ${arrStr}  Dep: ${depStr}  Fin: ${finStr}  Duree: ${dureeStr}`, mL + 25, 18);
+    const arrStr      = logChargement ? new Date(logChargement.timestamp).toLocaleTimeString('fr-FR') : '--';
+    const depStr      = logDepart     ? new Date(logDepart.timestamp).toLocaleTimeString('fr-FR')     : '--';
+    const arriveeStr  = logArrivee    ? new Date(logArrivee.timestamp).toLocaleTimeString('fr-FR')    : '--';
+    const finStr      = logFin        ? new Date(logFin.timestamp).toLocaleTimeString('fr-FR')        : '--';
+    const dureeStr    = `${Math.floor(dureeTotal/60)}h${String(dureeTotal%60).padStart(2,'0')}`;
+    const dechargeStr = dureeDecharge !== null ? `${dureeDecharge}min` : '--';
+    doc.text(`${nomTournee || ''}  |  ${agentName}  |  ${dateStr}  |  Chgt: ${arrStr}  Dep: ${depStr}  Arr: ${arriveeStr}  Fin: ${finStr}  Decharge: ${dechargeStr}  Duree: ${dureeStr}`, mL + 25, 18);
     doc.setTextColor(0, 0, 0);
 
     // Ligne séparatrice
@@ -1686,7 +1763,9 @@ Cordialement`
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', fontSize:'14px', color:'#6b7280' }}>
             {logChargement && <span>📦 Début chargement : <strong>{new Date(logChargement.timestamp).toLocaleTimeString('fr-FR')}</strong></span>}
             {logDepart     && <span>🚚 Départ unité : <strong>{new Date(logDepart.timestamp).toLocaleTimeString('fr-FR')}</strong></span>}
-            {logFin        && <span>✅ Fin décharge : <strong>{new Date(logFin.timestamp).toLocaleTimeString('fr-FR')}</strong></span>}
+            {logArrivee    && <span>🏠 Arrivée unité : <strong>{new Date(logArrivee.timestamp).toLocaleTimeString('fr-FR')}</strong></span>}
+            {logFin        && <span>✅ Fin déchargement : <strong>{new Date(logFin.timestamp).toLocaleTimeString('fr-FR')}</strong></span>}
+            {dureeDecharge !== null && <span>🔄 Durée déchargement : <strong>{dureeDecharge} min</strong></span>}
             <span>⏳ Durée totale : <strong>{Math.floor(dureeTotal/60)}h {dureeTotal%60}min</strong></span>
           </div>
         </div>
@@ -2033,11 +2112,12 @@ Annuler = Charger la nouvelle tournee`
     if (clientIndex < tournee.clients.length - 1) {
       setClientIndex(clientIndex + 1); setVue('tournee');
     } else {
-      setVue('fin');
+      setVue('retour');
     }
   };
 
-  const handleDecharge = () => { addLog('FIN_DECHARGE'); setVue('rapport'); };
+  const handleArriveeUnite   = () => { addLog('ARRIVEE_UNITE');  setVue('decharge'); };
+  const handleDecharge       = () => { addLog('FIN_DECHARGE');   setVue('rapport');  };
   const handleNouvelle = () => {
     localStorage.removeItem('bdl'); localStorage.removeItem('bdl-session');
     setVue('login'); setTournee(null); setNomTournee(''); setAgentName('');
@@ -2066,7 +2146,8 @@ Annuler = Abandonner et demarrer une nouvelle tournee`
   if (vue === 'login')   return <VueLogin  onLogin={handleLogin} onConfig={handleConfig} />;
   if (vue === 'import')  return <VueImport key={Date.now()} onImport={handleImport} onConfig={handleConfig} />;
   if (vue === 'recap')   return <VueRecap  tournee={tournee} onDemarrer={handleDemarrer} onRetour={() => setVue('import')} />;
-  if (vue === 'fin')     return <VueFin    onDecharge={handleDecharge} adresseUnite={config.adresseUnite} />;
+  if (vue === 'retour')  return <VueRetourUnite onArriveeUnite={handleArriveeUnite} adresseUnite={config.adresseUnite} logs={logs} />;
+  if (vue === 'decharge') return <VueDecharge   onDechargeTerminee={handleDecharge} logs={logs} />;
   if (vue === 'rapport') return <VueRapport tournee={tournee} clientData={clientData} logs={logs} startTime={startTime} agentName={agentName} onNouvelle={handleNouvelleAvecCheck} nomTournee={nomTournee} cabrisChargement={cabrisChargement} />;
 
   if (vue === 'tournee' && tournee)
