@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const APP_VERSION = '2.0.3';
+const APP_VERSION = '2.0.4';
 
 // ─── Helper : parser les lignes Excel (format ID_Cabri — une ligne = un cabri) ─
 // Règles :
@@ -1484,27 +1484,14 @@ function VueRetourUnite({ onArriveeUnite, adresseUnite }) {
 }
 
 // ─── Écran déchargement ───────────────────────────────────────────────────────
-function VueDecharge({ onDechargeTerminee, logs }) {
-  const logArrivee = logs.find(l => l.type === 'ARRIVEE_UNITE');
-  const heureArrivee = logArrivee
-    ? new Date(logArrivee.timestamp).toLocaleTimeString('fr-FR')
-    : new Date().toLocaleTimeString('fr-FR');
-
+function VueDecharge({ onDechargeTerminee }) {
   return (
     <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#92400e,#78350f)', display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}>
       <div style={{ background:'white', borderRadius:'20px', padding:'28px', maxWidth:'480px', width:'100%', textAlign:'center', boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ fontSize:'56px', margin:'0 auto 14px' }}>🚚</div>
-        <h2 style={{ fontSize:'24px', fontWeight:'bold', color:'#1f2937', marginBottom:'6px' }}>
+        <h2 style={{ fontSize:'24px', fontWeight:'bold', color:'#1f2937', marginBottom:'20px' }}>
           Déchargement du camion
         </h2>
-
-        {/* Heure d'arrivée */}
-        <div style={{ background:'#fef3c7', border:'2px solid #fde68a', borderRadius:'12px', padding:'14px', marginBottom:'18px' }}>
-          <p style={{ color:'#92400e', fontSize:'12px', fontWeight:'600', margin:'0 0 4px' }}>🏠 Arrivée à l'unité</p>
-          <p style={{ fontSize:'28px', fontWeight:'bold', color:'#78350f', margin:0 }}>
-            {heureArrivee}
-          </p>
-        </div>
 
         <div style={{ background:'#fef3c7', border:'1px solid #fde68a', borderRadius:'10px', padding:'10px', marginBottom:'16px' }}>
           <p style={{ color:'#92400e', fontSize:'13px', margin:0 }}>⛽ Pensez à faire le plein du camion !</p>
