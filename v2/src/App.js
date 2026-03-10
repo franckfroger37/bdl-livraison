@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const APP_VERSION = '2.0.6';
+const APP_VERSION = '2.0.7';
 
 // ─── Helper : parser les lignes Excel (format ID_Cabri — une ligne = un cabri) ─
 // Règles :
@@ -321,7 +321,7 @@ function VueLogin({ onLogin, onConfig }) {
         <div style={{ textAlign:'center', marginBottom:'24px' }}>
           <img src={LOGO_BDL} alt="Bulle de Linge" style={{ height:'100px', margin:'0 auto 16px', display:'block' }} />
           <h1 style={{ fontSize:'26px', fontWeight:'bold', color:'#1f2937', margin:'0 0 4px' }}>BDL-LIVRAISON</h1>
-          <p style={{ color:'#6b7280', margin:0 }}>Version {APP_VERSION} — Février 2026</p>
+          <p style={{ color:'#6b7280', margin:0 }}>Version {APP_VERSION} — Mars 2026</p>
         </div>
         <div style={{ background:'#f9fafb', borderRadius:'12px', padding:'16px', marginBottom:'16px', fontSize:'14px', color:'#374151', lineHeight:'1.8' }}>
           <p style={{ fontWeight:'bold', marginBottom:'8px', margin:'0 0 8px' }}>📋 Nouveautés v{APP_VERSION}</p>
