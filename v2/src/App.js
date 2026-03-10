@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const APP_VERSION = '2.0.7';
+const APP_VERSION = '2.0.8';
 
 // ─── Helper : parser les lignes Excel (format ID_Cabri — une ligne = un cabri) ─
 // Règles :
@@ -27,6 +27,12 @@ function parserRowsExcel(rows) {
     // Ignorer les lignes entièrement vides
     if (!clientVal && !serviceVal && !idCabriVal) return;
 
+    // Helper : lire la note (colonne "Note de tournée" ou variante avec faute de frappe)
+    const lireNote = (r) => {
+      const v = r['Note de tournée'] || r['Note de tounée'] || r['Note service'] || '';
+      return v ? String(v).trim() : '';
+    };
+
     // Nouveau client
     if (clientVal) {
       if (current) clients.push(current);
@@ -36,19 +42,13 @@ function parserRowsExcel(rows) {
         adresse:    row.Adresse   ? String(row.Adresse).trim()   : '',
         gps:        row.GPS       ? String(row.GPS).trim()       : '',
         telephone:  row.Telephone ? String(row.Telephone).trim() : '',
-        noteTournee: row['Note de tournée']
-          ? String(row['Note de tournée']).trim()
-          : (row['Note de tounée'] ? String(row['Note de tounée']).trim() : ''),
+        noteTournee: '', // notes portées par chaque service via noteService
         services: []
       };
       dernierServiceNom = '';
     }
 
     if (!current) return;
-
-    // Note de tournée peut apparaître sur n'importe quelle ligne du client
-    const note = row['Note de tournée'] || row['Note de tounée'] || '';
-    if (note && !current.noteTournee) current.noteTournee = String(note).trim();
 
     // Nom du service : nouveau si non vide, sinon carry-forward
     const nomService = serviceVal || dernierServiceNom;
@@ -62,15 +62,15 @@ function parserRowsExcel(rows) {
         cabrisIds: [],
         cabrisPrevu: 0,
         cabrisRecuperes: 0,
-        noteService: row['Note service'] ? String(row['Note service']).trim() : ''
+        noteService: lireNote(row) // note propre à CE service
       });
       dernierServiceNom = nomService;
     }
 
-    // Note de service carry-forward (si note présente sur une ligne du service courant)
-    const noteServiceVal = row['Note service'] ? String(row['Note service']).trim() : '';
-    if (noteServiceVal && current.services.length > 0 && !current.services[current.services.length - 1].noteService) {
-      current.services[current.services.length - 1].noteService = noteServiceVal;
+    // Note carry-forward : si une ligne suivante du même service a une note et que le service n'en a pas encore
+    const noteVal = lireNote(row);
+    if (noteVal && current.services.length > 0 && !current.services[current.services.length - 1].noteService) {
+      current.services[current.services.length - 1].noteService = noteVal;
     }
 
     // Ajouter l'ID cabri au service courant (si présent)
