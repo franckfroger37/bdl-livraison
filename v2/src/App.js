@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 
 // ─── Helper : parser les lignes Excel (format ID_Cabri — une ligne = un cabri) ─
 // Règles :
@@ -353,7 +353,9 @@ function VueLogin({ onLogin, onConfig }) {
           <img src={LOGO_BDL} alt="Bulle de Linge" style={{ height:'90px', margin:'0 auto 12px', display:'block' }} />
           <h1 style={{ fontSize:'28px', fontWeight:'bold', color:'#1f2937', margin:0 }}>BDL-LIVRAISON</h1>
           <p style={{ color:'#6b7280', marginTop:'4px', fontSize:'14px' }}>{cfg.nomUnite || 'Gestion de tournees'}</p>
-          <p style={{ color:'#2563eb', marginTop:'2px', fontSize:'12px', fontWeight:'600', letterSpacing:'0.05em' }}>v{APP_VERSION}</p>
+          <div style={{ display:'inline-block', background:'#dbeafe', borderRadius:'6px', padding:'3px 10px', marginTop:'6px' }}>
+            <p style={{ color:'#1d4ed8', margin:0, fontSize:'13px', fontWeight:'700', letterSpacing:'0.05em' }}>v{APP_VERSION}</p>
+          </div>
         </div>
 
         {/* Bannière reprise de session */}
