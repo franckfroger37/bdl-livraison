@@ -1,0 +1,19 @@
+{
+  "files": {
+    "main.css": "/bdl-livraison/static/css/main.233b3b67.css",
+    "main.js": "/bdl-livraison/static/js/main.8099fda8.js",
+    "static/js/239.60cd15c4.chunk.js": "/bdl-livraison/static/js/239.60cd15c4.chunk.js",
+    "static/js/213.0b5291df.chunk.js": "/bdl-livraison/static/js/213.0b5291df.chunk.js",
+    "static/js/455.d7944744.chunk.js": "/bdl-livraison/static/js/455.d7944744.chunk.js",
+    "index.html": "/bdl-livraison/index.html",
+    "main.233b3b67.css.map": "/bdl-livraison/static/css/main.233b3b67.css.map",
+    "main.8099fda8.js.map": "/bdl-livraison/static/js/main.8099fda8.js.map",
+    "239.60cd15c4.chunk.js.map": "/bdl-livraison/static/js/239.60cd15c4.chunk.js.map",
+    "213.0b5291df.chunk.js.map": "/bdl-livraison/static/js/213.0b5291df.chunk.js.map",
+    "455.d7944744.chunk.js.map": "/bdl-livraison/static/js/455.d7944744.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.233b3b67.css",
+    "static/js/main.8099fda8.js"
+  ]
+}
